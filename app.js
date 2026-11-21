@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-21.88";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-21.89";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -1528,11 +1528,11 @@ function mgRow(p) {                                   // 공정 줄 안에 들�
   return `<span class="mgi${b.ov ? " ov" : ""}" title="마진 ${won(Math.round(mg))}원 · 실공사비 ${won(Math.round(b.cost))}원${b.ov ? " · 고치기 전 " + mgPct(r0) + "%" : ""}">${b.ov ? `<button type="button" data-mgauto="${p}" title="계산한 값 ${mgPct(r0)}%로 되돌립니다" aria-label="${PROC_LABEL[p]} 마진 되돌리기">↺</button>` : ""}<input type="number" step="0.5" min="-100" max="99" inputmode="decimal" data-mgov="${p}" value="${b.ov ? mgPct(mg / b.amt) : ""}" placeholder="${mgPct(r0)}" aria-label="${PROC_LABEL[p]} 마진율 %">%</span>`;
 }
 function mgTotal() {                                  // 합계 아래: 실공사비 · 마진 합계 · 안내 (관리자 화면은 아래에 원래 있던 마진 막대가 합계를 보여 주므로 안내만)
-  const nov = PROCS.filter(p => R.byProc[p] && R.byProc[p].ov).length, zero = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)).length, adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
+  const nov = PROCS.filter(p => R.byProc[p] && R.byProc[p].ov).length, zeroL = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)), zero = zeroL.length, zeroN = [...new Set(zeroL.map(l => custName(l.name)))], adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
   return `<div class="mgbox">${STAFF_DATA ? `<div class="srow sub"><span>실공사비</span><span>${won(Math.round(R.cost))}</span></div><div class="srow"><span>마진 <small class="note">기업이윤 포함</small></span><b>${won(Math.round(R.net - R.cost))} · ${R.net ? mgPct(R.margin) + "%" : "-"}</b></div>` : ""}
-    <div class="note">위 <b>마진 %</b> 칸을 고치면 그 공정의 마진이 바뀝니다 (이 견적에만 · 판매 금액은 그대로 · 칸에 마우스를 올리면 금액). <b>고객 견적서에는 나가지 않습니다.</b>${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-mgauto="*">↺ 모두 되돌리기</button>` : ""}</div>
+    <div class="note"><b>마진 %</b> 칸을 고치면 그 공정 마진만 바뀝니다 (판매 금액은 그대로). <b>고객 견적서에는 안 나갑니다.</b>${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-mgauto="*">↺ 모두 되돌리기</button>` : ""}</div>
     <div class="mgall"><span>모든 공정을</span><input id="mgAll" type="number" step="0.5" min="-100" max="99" inputmode="decimal" placeholder="예: 30" aria-label="모든 공정의 마진율 %"><span>% 로</span><button type="button" class="btn sm" data-mgall>맞추기</button></div>
-    ${STAFF_DATA && zero ? `<div class="note down" style="margin-top:4px">원가가 없는 줄 ${zero}개 — 그만큼 마진이 높게 보입니다.</div>` : ""}
+    ${STAFF_DATA && zero ? `<div class="note down" style="margin-top:4px" title="${esc(zeroN.join(" · "))}">원가가 없는 줄 ${zero}개 (${esc(zeroN.slice(0, 2).join(" · "))}${zeroN.length > 2 ? " 외" : ""}) — 그만큼 마진이 높게 보입니다.</div>` : ""}
     ${adm ? `<div class="note" style="margin-top:6px">실장 화면에도 공정별 마진이 보입니다: <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button><br><span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</div>` : ""}</div>`;
 }
 function mgNote() {                                   // 마진이 안 보일 때 까닭 한 줄 (실장 화면 · 회사 주소로 연 화면에서만)
@@ -3055,7 +3055,7 @@ function renderChecklist() {
 const WOOD_MEN = { flatCeil: "+1명", halfIn: "+1.5명", insul: "+1.5명" };   // 화면에 적어 주는 인원 (실제 계산식은 데이터의 woodLabor 수량식)
 function woodHead(st) {                               // 목공 단계 맨 위: 작업은 아래 묶음 카드에서 고른다 (발코니 확장과 같은 형식 — 카드 → 줄(수량 × 단가 = 금액) → 포함 내역)
   const cs = ((D.cats || {}).s4 || []).filter(c => c.only && !c.main && !HIDE_LINES.includes(c.only) && !CAT_OPEN["s4|" + c.key] && !c.lines.some(id => { const x = lineById(id); return x && lnState(x).on }));
-  return `<div class="pgroup wkc whd"><h3>목공 작업 고르기 <span class="note">아래 <b>작업 카드를 체크</b>하면 그 작업의 자재 ○식 · 부자재 ○식 · 목수 인원이 들어갑니다. 줄마다 ‘수량 × 단가 = 금액’이 보이고, <b>포함 내역</b>을 펼치면 들어가는 자재 수량을 바로 고칠 수 있습니다. 목수 인원은 맨 아래 ‘공통’ 카드의 목수 작업비에 합쳐집니다</span></h3>
+  return `<div class="pgroup wkc whd"><h3>목공 작업 고르기 <span class="note"><b>작업 카드를 체크</b>하면 그 작업의 자재 · 부자재 · 목수 인원이 함께 들어갑니다 (목수 인원은 맨 아래 ‘공통’ 카드의 목수 작업비에 합산)</span></h3>
     ${cs.length ? `<div class="wkr"><b>다른 작업</b><div class="cmpch">${cs.map(c => `<button type="button" data-wk="${c.only}">+ ${esc(c.label)}${WOOD_MENS[c.only] ? ` <small>목수 ${WOOD_MENS[c.only]}명</small>` : ""}</button>`).join("")}</div></div>` : ""}</div>`;
 }
 function woodTail() {                                 // 목공 카드 아래: 목록에 없는 작업(목수 인원으로 넣기) · 1식 단가
@@ -3131,7 +3131,7 @@ const QUICK_ADD = {                                  // "이름|단위|단가|�
 function quickAddCard(st, custom) {                  // 각 공정 단계의 ‘이 공정에 항목 추가’
   const hasCats = !!((D.cats || {})[st.key]), shown = catXAssign.sk === st.key ? catXAssign.shown : null;
   const qs = (QUICK_ADD[st.key] || []).filter(q => !(/(천장 몰딩|걸레받이) 철거/.test(q) && lnFind("demoMoldTop"))).filter(q => !hasCats || !catOfName(st, qaParse(st, q).name, shown)), proc = st.key === "s1" ? "철거" : st.procs[0];   // (v75) 묶음에 맞는 것은 그 묶음 카드의 ‘＋ 항목 추가’에 있다   // 철거 묶음에 정식 줄이 생긴 것은 빠른 추가에서 뺀다 (같은 것이 두 군데 있지 않게)
-  return `<div class="pgroup qadd"><h3>${hasCats ? "묶음에 없는 항목 추가" : "이 공정에 항목 추가"} <span class="note">${hasCats ? "위 <b>묶음 카드를 펼치면 맨 아래 ‘＋ 항목 추가’</b>로 그 묶음에 맞는 작업을 바로 넣을 수 있습니다. 어느 묶음에도 맞지 않는 것만 여기서 넣습니다. " : ""}누르면 아래에 줄이 생깁니다. <b>공정</b>·이름·단위·수량·단가를 고칠 수 있고, ‘비교견적(별도)’로도 돌릴 수 있습니다</span></h3>
+  return `<div class="pgroup qadd"><h3>${hasCats ? "묶음에 없는 항목 추가" : "이 공정에 항목 추가"} <span class="note">${hasCats ? "묶음에 맞는 작업은 <b>그 카드 안의 ‘＋ 항목 추가’</b>로 · 어디에도 맞지 않는 것만 여기서 넣습니다" : "누르면 아래에 줄이 생깁니다 · 공정·이름·단위·수량·단가를 고칠 수 있습니다"}</span></h3>
     <div class="fchips">${qs.map(q => { const m = q.match(/^([가-힣]+)>/), pr = m && PROCS.includes(m[1]) ? m[1] : proc, body = m ? q.slice(m[0].length) : q, far = !st.procs.includes(pr); return `<button type="button" class="btn sm" data-qadd="${esc(pr + "|" + body)}" data-qat="${st.key}" data-qcat="">+ ${far ? esc(pr) + " · " : ""}${esc(body.split("|")[0])}</button>` }).join("")}<button type="button" class="btn sm" data-custom="${esc(proc)}">+ 직접 입력</button></div>
     ${custom.length ? lineTable(custom, true) + '<p class="note" style="padding:0 14px 10px">단가를 비워 두면 견적서에 ‘별도 협의’로 나갑니다. 단위를 m·㎡·평으로 바꾸면 치수(가로*세로*개수)로 수량을 넣을 수 있습니다.</p>' : ""}</div>`;
 }
@@ -3601,13 +3601,15 @@ document.addEventListener("change", ev0 => {
 
 /* ---------- 합계 ---------- */
 function cmpSummary() {                              // 합계 칸: 비교견적(별도) 모아 보기
-  const o = R.opt || [], c = R.cmp || []; if (!o.length && !c.length) return '<div class="cmpsum empty note"><b>비교견적</b> 공사 줄의 ‘비교견적’ 단추를 누르면 합계에 넣지 않고 금액만 따로 낼 수 있습니다. (예: 장판 ↔ 강마루, 문 교체 ↔ 필름)</div>';
+  const o = R.opt || [], c = R.cmp || []; if (!o.length && !c.length) return '<div class="cmpsum empty note" title="공사 줄의 ‘비교견적’ 단추를 누르면 합계에 넣지 않고 금액만 따로 낼 수 있습니다. (예: 장판 ↔ 강마루, 문 교체 ↔ 필름)"><b>비교견적</b> 공사 줄의 ‘비교견적’ 단추로 따로 냅니다 (합계 미포함)</div>';
   const by = new Map(); for (const l of o) { const k = l.lid || l.key, x = lnFind(l.lid); if (!by.has(k)) by.set(k, { n: l.extra ? (l.film ? "필름 · " + l.spaceName : (l.name || "직접 입력")) : (x ? lineLabel(x) : aliasOf(l.name)), a: 0 }); by.get(k).a += l.amt }
   return `<div class="cmpsum"><div class="cmpt">비교견적 <small>별도 · 합계 미포함 · VAT 별도</small></div>`
     + [...by.values()].map(x => `<div class="srow sub"><span>별도 · ${esc(x.n)}</span><span>${won(x.a)}</span></div>`).join("") + (o.length ? `<div class="srow sub"><span><b>별도 합계</b></span><b>${won(R.optSum)}</b></div>` : "")
     + c.map(x => `<div class="srow sub"><span>${esc(aliasOf(x.from))} → ${esc(aliasOf(x.to))}</span><span>${x.diff > 0 ? "+" : "−"}${won(Math.abs(x.diff))}</span></div>`).join("") + "</div>";
 }
-function renderSummary() {
+function renderSummary() {                             // (v89) 합계 칸은 화면보다 길면 안에서 스크롤된다 → 다시 그려도 보던 자리를 지킨다
+  const b0 = document.querySelector("#summary>.bd"), st0 = b0 ? b0.scrollTop : 0; renderSummary1(); if (st0) { const b1 = document.querySelector("#summary>.bd"); if (b1) b1.scrollTop = st0 } }
+function renderSummary1() {
   const tgt = D.settings.targetMargin ?? 0.2, m = R.margin, mgc = mgCan(), mgs = mgc && !mgHidden();   // (v88) mgs = 공정마다 마진을 같이 보여 준다
   $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span>${mgc ? `<button type="button" class="btn ghost sm" data-mghide title="고객과 화면을 같이 볼 때 마진을 감춥니다 (이 기기에 기억)">${mgs ? "마진 가리기" : "마진 보기"}</button>` : ""}<span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
    ${mgs ? '<div class="srow sub mgh"><span></span><span class="mgi">마진 %</span><span class="pa">금액</span></div>' : ""}
@@ -3866,6 +3868,15 @@ document.head.insertAdjacentHTML("beforeend", `<style>
 .mgi button{border:0;background:none;cursor:pointer;color:var(--accent);padding:0 1px;font-size:13px;line-height:1}
 .mgall{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;color:var(--muted)}.mgall input{width:58px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:12px;text-align:right;background:var(--surface,#fff);color:var(--ink)}
 .mgbox{margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(46,107,87,.07);border:1px solid rgba(46,107,87,.22)}
+.srow.mg{padding-top:2px;padding-bottom:2px}.mgi input{height:21px}
+.cmpsum.empty{padding:5px 9px}
+@media (min-width:1301px){.est3.wiz .sumslot{align-self:stretch}
+.est3.wiz #summary{display:flex;flex-direction:column;max-height:calc(100vh - 78px - env(safe-area-inset-top,0px))}
+.est3.wiz #summary>.hd{flex:0 0 auto}
+.est3.wiz #summary>.bd{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:0;scrollbar-width:thin}
+.est3.wiz #summary>.bd>.toolbar{position:sticky;bottom:0;z-index:2;background:var(--panel);margin:10px -14px 0;padding:9px 104px 11px 14px;border-top:1px solid var(--line);border-radius:0 0 12px 12px}
+body #helpFab{bottom:18px}}
+
 .roomgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:8px 16px}
 .roomgrid .rrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--line);border-radius:10px}
 .roomgrid .rrow>b{min-width:88px}
@@ -4412,7 +4423,7 @@ function planCard(st) {                             // 공정 단계 맨 위에 
     return `${roomName(id).replace(/ \(.*\)/, "")} ${kept.length && kept.length <= 2 ? nm(kept) + "만 공사" : nm(Object.keys(ws)) + " 제외"}` });
   const wallNote = wallList.length ? `<div class="scope"><div><b class="no">벽 일부만</b> ${esc(wallList.join(" / "))}</div></div>` : "";
   const nc = (E.noCeil || {})[sk], ceilNote = sk === "s9" && stepItems(sk).some(l => /paperM2|\bpy\b/.test(String(l.qty)) && surfOf(l, sk) === "wall") ? `<div class="scope"><div>천장 도배 <b class="${nc ? "no" : "ok"}">${nc ? "제외 (벽만)" : "포함"}</b> <button type="button" class="btn ghost sm" data-noceil="${sk}">${nc ? "천장도 하기" : "벽만 하기"}</button></div></div>` : "";
-  const spcChips = rel.length && mode === 0 ? `<div class="spcs">${rel.map(s => `<button type="button" class="spc ${skip[s.id] ? "off" : "on"}" data-spc="${sk}|${s.id}" title="누르면 이 공간을 이 공정에서 빼거나 다시 넣습니다">${skip[s.id] ? "✕" : "✓"} ${esc(s.name.replace(/ \(.*\)/, ""))} <small>${skip[s.id] ? "제외" : "포함"}</small></button>`).join("")}</div><div class="note" style="margin:2px 0 6px">공간 단추를 누르면 이 공정에서 그 공간을 빼거나 넣습니다 (도면을 누르는 것과 같습니다). 수량·금액이 바로 바뀝니다.</div>` : "";
+  const spcChips = rel.length && mode === 0 ? `<div class="spcs">${rel.map(s => `<button type="button" class="spc ${skip[s.id] ? "off" : "on"}" data-spc="${sk}|${s.id}" title="누르면 이 공간을 이 공정에서 빼거나 다시 넣습니다">${skip[s.id] ? "✕" : "✓"} ${esc(s.name.replace(/ \(.*\)/, ""))} <small>${skip[s.id] ? "제외" : "포함"}</small></button>`).join("")}</div>` : "";
   const nMeas = rel.filter(s => s.measured).length, measNote = rel.length ? `<div class="scope"><div>수량 기준 ${nMeas ? `<b class="ok">실측 ${nMeas}곳</b>` : ""}${rel.length - nMeas ? ` 평형 추정 ${rel.length - nMeas}곳` : ""} <button type="button" class="btn ghost sm" data-godim>실측 치수 넣기</button></div></div>` : "";
   const scope = `${rel.length ? `<div class="scope"><div><b class="ok">공사하는 공간 ${inc.length}곳</b> ${esc(inc.map(s => s.name.replace(/ \(.*\)/, "")).join(" · ") || "없음")}</div>${exc.length ? `<div><b class="no">제외 ${exc.length}곳</b> ${esc(exc.map(s => s.name.replace(/ \(.*\)/, "")).join(" · "))} <button type="button" class="btn ghost sm" data-skipclear="${sk}">모두 다시 넣기</button></div>` : ""}${!exc.length && Object.keys(sw).length ? `<div><button type="button" class="btn ghost sm" data-skipclear="${sk}">벽 선택 모두 되돌리기</button></div>` : ""}</div>` : '<p class="note" style="margin:0 0 6px">이 공정에서 체크한 공사 중 특정 공간에 들어가는 것이 아직 없습니다.</p>'}
      ${mis.map(x => `<div class="mis">‘${esc(lineLabel(x.l))}’ 수량을 직접 <b>${x.q}${esc(x.unit)}</b>(으)로 넣었습니다. 도면에 켜진 공간 기준은 ${x.auto}${esc(x.unit)}입니다. 안 하는 공간을 도면에서 끄면 수량이 자동으로 맞춰집니다. <button type="button" class="btn sm" data-qreset="${x.l.id}">도면 기준으로 되돌리기</button></div>`).join("")}`;
