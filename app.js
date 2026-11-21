@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-21.85";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-21.86";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -269,6 +269,7 @@ function spaces() {
   for (let i = 1; i <= bal; i++) out.push({ id: "bal" + i, type: "발코니", name: "발코니" + i, ...geometry(L.balcony, H, cut) });
   for (const x of xspList()) out.push({ id: x.id, type: XSP_KIND[x.type] ? x.type : "방", xsp: true, name: x.name, A: 0, P: 0, W: 0 });   // (v63) 추가 공간: 넓이는 0에서 시작 — 아래에서 치수(E.dim)를 넣은 것만 면적이 생긴다
   // 실측 치수(E.dim)가 있으면 평형 추정값 대신 쓴다: 가로×세로, 또는 면적만
+  for (const s of out) s.A0 = s.A;                     // (v86) 평형으로 나눈 자동 넓이 (치수를 넣어도 남겨 둔다)
   const fit = planFitMap(out);                         // (v68) ‘그린 크기대로’가 켜져 있으면 도면에 그린 방 크기 (실측 치수가 없는 방만)
   for (const s of out) {
     let m = (E.dim || {})[s.id]; const fz = fit && fit[s.id];
@@ -1419,6 +1420,7 @@ function estCheck(steps) {
   const on = all.filter(x => lnState(x.l).on), onT = on.map(x => x.t).concat((E.extras || []).map(x => x.item || x.name || "")).join(" | ");
   const stepOfProc = p => (steps.find(s => (s.procs || []).includes(p)) || {}).key;
   if (!(E.info.addr || E.info.bname)) out.push({ lv: 1, t: "현장 주소(단지명)가 비어 있습니다.", go: 0, wh: "현장 정보 › 고객·현장", at: { sel: '#info [data-info="addr"]', up: ".f", say: "현장 주소나 단지명을 적어 주세요." } });
+  if (!String(E.info.dur ?? "").trim()) out.push({ lv: 2, t: `예상 공사 기간을 아직 정하지 않았습니다. (지금은 견적서에 자동 계산 ‘약 ${durAuto()}주’로 나갑니다)`, go: steps.length - 1, wh: "② 상세견적서 › 맨 위 ‘예상 공사 기간’", at: { doc: "dur", say: "공사 기간을 골라 주세요. 고객에게 설명할 기간입니다." } });   // (v86) 사용자: “실장들이 공사기간을 정해야 해 그래야 고객한테 설명하지”
   for (const l of R.tbd) { const sk = l.step || stepOfProc(l.proc); out.push({ lv: 1, t: `‘${aliasOf(l.name)}’ 단가가 없습니다. 견적서에 ‘별도 협의’로 나갑니다.`, go: idx(sk), wh: spotWh(steps, sk, l.lid), at: spotOfLine(l, "단가를 넣거나 종류를 바꾸세요. 그대로 두면 견적서에 ‘별도 협의’로 나갑니다.") }) }
   for (const l of R.lines) if (!l.extra && l.lid && !(l.qty > 0)) out.push({ lv: 1, t: `‘${aliasOf(l.name)}’ 수량이 0입니다. 수량을 넣거나 체크를 끄세요.`, go: idx(l.step), wh: spotWh(steps, l.step, l.lid), at: spotOfLine(l, "수량을 넣거나, 안 하는 공사면 체크를 끄세요.") });
   const wBad = w => (String(w.loc || "").trim() || +w.w > 0) && !(+w.price > 0), wn = (E.wins || []).filter(wBad).length; if (wn) out.push({ lv: 1, t: `창호 목록에 금액이 빈 창이 ${wn}개 있습니다.`, go: idx("s2"), wh: spotWh(steps, "s2", "", "창문(샷시) 교체 › 창호 목록"), at: { cat: "s2|window", h: "창호 목록", rowSel: "tbody tr", row: (E.wins || []).findIndex(wBad), say: "이 창의 금액 칸이 비어 있습니다." } });
@@ -1487,6 +1489,7 @@ function spotMark(at) {
   return true;
 }
 function goSpot(step, at) {                           // 그 단계로 가서(묶음을 펼치고) 그 자리를 짚는다
+  if (at && at.doc) { show("doc"); setTimeout(() => { const b = $("#docOpts"); if (!b) return; b.scrollIntoView({ block: "center", behavior: "smooth" }); b.style.outline = "3px solid var(--accent)"; b.style.outlineOffset = "4px"; setTimeout(() => { b.style.outline = ""; b.style.outlineOffset = "" }, 4500); if (at.say) toast(at.say) }, 150); return }   // (v86) 상세견적서 화면 위의 칸(공사 기간)
   const steps = STEPS(); E.step = Math.min(Math.max(0, +step || 0), steps.length - 1);
   if (at && at.lid) { const c = catOfLine(at.lid); if (c.cat) openCat(c.sk + "|" + c.cat.key) }
   if (at && at.cat) openCat(at.cat);                  // (v77) 묶음 안에 있는 표(창호 목록 · 가구 치수 · 목작업 치수)
@@ -3187,6 +3190,7 @@ function renderInfo() {
     ${bathModeCard({ tight: true })}
     <div class="f wide"><span>발코니</span>${seg("balconies", [0, 1, 2, 3])}</div>
     <div class="f wide"><span>드레스룸</span>${seg("dress", [0, 1])}</div>
+    <div class="f wide"><span>방 크기 <small class="note">가로 × 세로 · 비우면 자동</small></span>${roomDimBox(S)}</div>
     <div class="f wide"><span>추가 공간 <small class="note">방 목록에 없는 곳</small></span>${xspBox(S)}</div>
     <label class="f">층<span class="in"><input type="number" min="1" data-e="level" value="${esc(E.level)}"><span class="u">층</span></span></label>
     <label class="f">기업이윤<span class="in"><input type="number" step="0.5" data-e="biz" value="${esc(E.biz)}"><span class="u">%</span></span></label>
@@ -3221,6 +3225,40 @@ function xspPlanDim(id) {                             // 올린 도면에 그려
   return { w: r2(b.w * kx), d: r2(b.h * ky), a: r2(b.w * kx * b.h * ky) };
 }
 const XSP_HOW = { "방": "바닥·벽·둘레 넓이에 더합니다 (몰딩·걸레받이처럼 ㎡·m로 세는 공사)", "주방": "바닥·벽·둘레 넓이에 더합니다 (주방 공사 범위로 표시)", "발코니": "발코니 타일·페인트 넓이에 더합니다" };
+/* (v86) 방 크기 — 사용자(2026-11-21): “방 1,2,3, 거실 설정할때 치수넣게 만들어줘 이유는 치수가 방마다 다 다르기때문이야 · 가견적으로 원하는 분들이 있기때문에 자동 분배도 있지만 치수 넣게 만들어줘야해”.
+   ‘현장 정보 → 공간’에서 거실·주방·방마다 가로×세로(mm)를 바로 넣는다. 비워 두면 평형으로 자동 분배(가견적) — 칸의 흐린 숫자가 그 자동값이다(평형·방 수가 바뀌면 같이 바뀐다).
+   칸은 실측 표·도면 벽 치수와 같은 값(E.dim[id].w/d)이다. 실측 표(dimBox)에서는 이 방들의 가로·세로 칸을 뺐다(같은 칸이 두 군데 있지 않게 — 넓이만 넣는 칸과 벽체별은 그대로). */
+const ROOM_RATIO = { "거실": 1.35, "주방": 1.5, "방": 1.15 };   // 자동 넓이를 가로×세로로 보여 줄 때의 어림 비율 (계산에는 넓이만 쓴다)
+const isRoomRow = s => !!s && !s.xsp && (s.type === "거실" || s.type === "주방" || s.type === "방");
+const roomOwn = s => { const m = (E.dim || {})[s.id] || {}; return (+m.w > 0 && +m.d > 0) || +m.a > 0 };
+function roomAutoWD(s) { const A = +s.A0 || 0; if (!(A > 0)) return null; const w = Math.sqrt(A * (ROOM_RATIO[s.type] || 1.2)); return [Math.round(w * 10) * 100, Math.round(A / w * 10) * 100] }   // mm (100 단위)
+function roomDimInfo(s) {
+  const m = (E.dim || {})[s.id] || {}, hw = +m.w > 0, hd = +m.d > 0, a0 = +s.A0 || 0, back = `<button type="button" class="btn ghost sm" data-roomauto="${s.id}">↺ 자동</button>`;
+  if (hw !== hd && !(+m.a > 0)) return `<b style="color:var(--warn)">가로·세로를 둘 다 넣어야 계산됩니다</b> <span class="note">(지금은 자동 ${s.A}㎡)</span> ${back}`;
+  if (roomOwn(s)) { const df = r1(s.A - a0); return `<span class="pill 엑셀">입력</span> <b>${s.A}㎡</b> (${toPy(s.A)}평) <span class="note">자동이면 ${a0}㎡${df ? ` · ${df > 0 ? "+" : "−"}${Math.abs(df)}㎡` : ""}</span> ${back}` }
+  return `<span class="pill">${s.fit ? "도면에 그린 크기" : "자동"}</span> ${s.A}㎡ (${toPy(s.A)}평)`;
+}
+function roomSumTxt(S) {
+  const rs = S.list.filter(isRoomRow), n = rs.filter(roomOwn).length, sum = r1(rs.reduce((a, s) => a + (s.A || 0), 0)), s0 = r1(rs.reduce((a, s) => a + (+s.A0 || 0), 0));
+  return `거실·주방·방 바닥 합계 <b>${sum}㎡</b> (${toPy(sum)}평)` + (n ? ` · 직접 넣은 곳 ${n}곳 <span class="note">(모두 자동이면 ${s0}㎡)</span> <button type="button" class="btn ghost sm" data-roomauto="*">↺ 모두 자동으로</button>` : ` <span class="note">· ${+E.py || 0}평형에 맞춰 자동으로 나눈 값</span>`);
+}
+function roomDimBox(S) {
+  const dm = E.dim || {}, rows = S.list.filter(isRoomRow), row = "display:flex;flex-wrap:wrap;gap:6px;align-items:center";
+  const inp = (s, k, ph) => { const m = dm[s.id] || {}; return `<input class="q" type="number" min="0" step="10" inputmode="numeric" style="width:108px" data-dim="${s.id}|${k}" data-mm="1" value="${m[k] === undefined || m[k] === "" ? "" : Math.round(m[k] * 1000)}" placeholder="${ph}" aria-label="${esc(s.name)} ${k === "w" ? "가로" : "세로"} mm">` };
+  return `<div id="roomDimBox" style="flex:1 1 100%;min-width:0">
+    ${rows.map((s, i) => { const a = roomAutoWD(s) || ["", ""]; return `<div data-roomrow="${s.id}" style="${row};${i ? "margin-top:6px;padding-top:6px;border-top:1px dashed var(--line,#d8ddd6)" : ""}"><b style="min-width:104px">${esc(s.name)}</b>${inp(s, "w", "자동 " + a[0])}<span class="note">×</span>${inp(s, "d", "자동 " + a[1])}<span class="note">mm</span><span data-roomout style="flex:1 1 230px;min-width:0">${roomDimInfo(s)}</span></div>` }).join("")}
+    <div id="roomSum" style="margin-top:8px">${roomSumTxt(S)}</div>
+    <small class="note" style="display:block;margin-top:4px"><b>비워 두면 평형에 맞춰 자동으로 나눕니다</b>(가견적 · 칸의 흐린 숫자가 자동값). 방마다 잰 치수를 넣으면 그 방은 넣은 값으로 계산합니다. 몰딩·걸레받이·천장·바닥 목공처럼 길이·넓이로 세는 공사가 따라 바뀌고, <b>도배·장판·강마루는 각 단계의 ‘평수’ 칸</b>에서 정합니다. 욕실·현관·발코니 치수는 타일 줄 아래에서 넣습니다.</small></div>`;
+}
+function roomDimSync() {                              // 치수 칸을 고친 뒤: 방 크기 칸의 오른쪽 글과 합계만 다시 적는다 (치던 칸은 그대로)
+  document.querySelectorAll("[data-roomrow]").forEach(r => { const s = R.S.list.find(x => x.id === r.dataset.roomrow), o = r.querySelector("[data-roomout]"); if (s && o) o.innerHTML = roomDimInfo(s) });
+  const rs = $("#roomSum"); if (rs) rs.innerHTML = roomSumTxt(R.S);
+}
+document.addEventListener("click", ev0 => {           // ↺ 자동: 그 방(또는 모든 방)의 가로·세로·넓이를 지워 평형 기준으로 되돌린다 (벽체별·높이는 그대로)
+  const b = ev0.target.closest && ev0.target.closest("[data-roomauto]"); if (!b) return; const id = b.dataset.roomauto, dm = E.dim || {};
+  for (const k of id === "*" ? Object.keys(dm) : [id]) { const s = R.S.list.find(x => x.id === k), m = dm[k]; if (!m || !isRoomRow(s)) continue; for (const f of ["w", "d", "a", "p"]) delete m[f]; if (!Object.keys(m).length) delete dm[k] }
+  refresh(true); toast(id === "*" ? "거실·주방·방 크기를 모두 자동(평형 기준)으로 되돌렸습니다. (Ctrl+Z 되돌리기)" : "그 방의 크기를 자동(평형 기준)으로 되돌렸습니다. (Ctrl+Z 되돌리기)");
+});
 function xspBox(S) {
   const xs = xspList(), dm = E.dim || {}, has = n => xs.some(x => x.name === n), row = "display:flex;flex-wrap:wrap;gap:6px;align-items:center";
   const one = x => { const s = S.list.find(q => q.id === x.id) || { xsp: true, A: 0 }, m = dm[x.id] || {}, est = !(s.A > 0) ? xspPlanDim(x.id) : null;
@@ -3356,11 +3394,11 @@ function measOut(lid, k) {                          // 실측표 오른쪽에 �
   return `${nm}: <b>${m ? m.qty : "-"}${m ? esc(m.unit) : ""}</b>${m && m.measured ? ' <span class="pill 엑셀">실측</span>' : ' <span class="pill">기본값</span>'}${m && m.edited ? " · 수량을 손으로 고친 상태" : ""}`;
 }
 function dimBox(S) {
-  const dm = E.dim || {}, n = S.list.filter(s => s.measured).length + Object.values(E.meas || {}).filter(v => +v > 0).length;
-  return `<details class="more" ${n || E.dimOpen ? "open" : ""}><summary>실측 치수 표로 넣기 (가로·세로 · 벽체별 · 가구·창) <span class="note">${n ? n + "건 실측 반영 중" : "현장에서 잰 치수를 넣으면 수량이 실측값으로 계산됩니다 · 비워 두면 평형으로 추정"}</span></summary>
+  const dm = E.dim || {}, n = S.list.filter(s => s.measured).length + Object.values(E.meas || {}).filter(v => +v > 0).length, n2 = n - S.list.filter(s => s.measured && isRoomRow(s) && !s.wallN).length;   // n2 = 위 ‘방 크기’ 칸에서 넣은 것 말고 이 표에서 볼 것
+  return `<details class="more" ${n2 || E.dimOpen ? "open" : ""}><summary>실측 치수 표 (욕실·현관·발코니 · 벽체별 · 가구·창) <span class="note">${n ? n + "건 실측 반영 중" : "현장에서 잰 치수를 넣으면 수량이 실측값으로 계산됩니다 · 비워 두면 평형으로 추정"}</span></summary>
    <div class="bd"><p class="note"><b>치수는 모두 mm로 넣습니다</b> (위 도면에서 벽을 눌러 넣는 것과 같은 단위). 넣는 방법은 세 가지이고 아무거나 하나만 쓰면 됩니다: ① 위 도면에서 벽을 눌러 넣기 ② 이 표에 가로·세로 ③ 벽마다 가로*높이.<br>공간마다 가로·세로를 넣거나, 모양이 반듯하지 않으면 면적(㎡)만 넣으세요. 넣은 공간은 그 값으로 바닥·벽·둘레 수량을 다시 계산합니다.<br><b>벽체별 치수</b>: 벽마다 <code>가로*높이</code>(mm)를 쉼표로 이어 적으면 벽 면적과 둘레가 그 값으로 계산됩니다. 예: <code>3600*2300, 2400*2300*2, -900*2100</code> (‘*2’ = 같은 벽 2개 · ‘-’ = 문·창처럼 빼는 면). 도배·몰딩·타일 수량이 이 면적을 따라갑니다.</p>
    <div class="tbl"><table><thead><tr><th>공간</th><th class="num">가로 mm</th><th class="num">세로 mm</th><th class="num">또는 면적 ㎡</th><th>계산 결과</th></tr></thead><tbody>
-   ${S.list.filter(s => s.type !== "공통").map(s => { const m = dm[s.id] || {}; return `<tr data-dimrow="${s.id}"><td><b>${esc(s.name)}</b></td>${["w", "d", "a"].map(k => `<td class="num"><input class="q" type="number" min="0" step="${k === "a" ? 0.01 : 10}" data-dim="${s.id}|${k}"${k === "a" ? "" : ' data-mm="1"'} value="${m[k] === undefined || m[k] === "" ? "" : k === "a" ? m[k] : Math.round(m[k] * 1000)}" placeholder="${k === "a" ? "" : "예: 3600"}" aria-label="${esc(s.name)} ${k === "w" ? "가로" : k === "d" ? "세로" : "면적"}"></td>`).join("")}<td class="note" data-dimout>${dimInfo(s)}</td></tr><tr class="dimwr"><td class="note" style="text-align:right">└ 벽체별</td><td colspan="4"><input class="dimw" data-dimw="${s.id}" value="${esc(m.walls || "")}" placeholder="3600*2300, 2400*2300, -900*2100" aria-label="${esc(s.name)} 벽체별 치수" title="벽마다 가로*높이(mm)를 쉼표로 이어 적습니다. 같은 벽이 여러 개면 *개수, 문·창처럼 뺄 면은 앞에 - 를 붙입니다"></td></tr>` }).join("")}
+   ${S.list.filter(s => s.type !== "공통").map(s => { const m = dm[s.id] || {}; return `<tr data-dimrow="${s.id}"><td><b>${esc(s.name)}</b></td>${["w", "d", "a"].map(k => isRoomRow(s) && k !== "a" ? (k === "w" ? '<td class="note" colspan="2" style="text-align:center">가로·세로는 위 ‘공간’ 칸의 <b>방 크기</b>에서</td>' : "") : `<td class="num"><input class="q" type="number" min="0" step="${k === "a" ? 0.01 : 10}" data-dim="${s.id}|${k}"${k === "a" ? "" : ' data-mm="1"'} value="${m[k] === undefined || m[k] === "" ? "" : k === "a" ? m[k] : Math.round(m[k] * 1000)}" placeholder="${k === "a" ? "" : "예: 3600"}" aria-label="${esc(s.name)} ${k === "w" ? "가로" : k === "d" ? "세로" : "면적"}"></td>`).join("")}<td class="note" data-dimout>${dimInfo(s)}</td></tr><tr class="dimwr"><td class="note" style="text-align:right">└ 벽체별</td><td colspan="4"><input class="dimw" data-dimw="${s.id}" value="${esc(m.walls || "")}" placeholder="3600*2300, 2400*2300, -900*2100" aria-label="${esc(s.name)} 벽체별 치수" title="벽마다 가로*높이(mm)를 쉼표로 이어 적습니다. 같은 벽이 여러 개면 *개수, 문·창처럼 뺄 면은 앞에 - 를 붙입니다"></td></tr>` }).join("")}
    </tbody></table></div>
    <h3 style="font-size:13px;margin:12px 0 4px">주방 · 가구 · 창 <span class="note">치수를 넣으면 그 공사의 수량이 실측값으로 바뀝니다 · 비워 두면 기본 수량</span></h3>
    <div class="tbl"><table><thead><tr><th>항목</th><th class="num">실측값</th><th>단위</th><th>견적에 들어가는 수량</th><th>설명</th></tr></thead><tbody>
@@ -3374,8 +3412,9 @@ document.addEventListener("input", ev0 => {
   const el = ev0.target; if (el.dataset.dim === undefined && el.dataset.dimh === undefined) return;
   if (el.dataset.dimh !== undefined) E.ceilH = el.value === "" ? "" : +el.value;
   else { const [id, k] = el.dataset.dim.split("|"); E.dim = E.dim || {}; const m = E.dim[id] = E.dim[id] || {}; if (el.value === "") delete m[k]; else m[k] = el.dataset.mm ? +el.value / 1000 : +el.value; if (!Object.keys(m).length) delete E.dim[id] }
-  E.dimOpen = true; R = compute(); renderSummary(); save();
-  for (const s of R.S.list) document.querySelectorAll(`[data-dimrow="${s.id}"] [data-dimout]`).forEach(c => c.innerHTML = dimInfo(s));   // 같은 공간의 줄이 두 군데(추가 공간 줄 · 실측 표)에 있을 수 있다
+  if (el.closest("details.more")) E.dimOpen = true; R = compute(); renderSummary(); save();   // (v86) 접어 둔 실측 표는 그 안에서 칠 때만 펼쳐 둔다
+  for (const s of R.S.list) document.querySelectorAll(`[data-dimrow="${s.id}"] [data-dimout]`).forEach(c => c.innerHTML = dimInfo(s));
+  roomDimSync();   // 같은 공간의 줄이 두 군데(추가 공간 줄 · 실측 표)에 있을 수 있다
   if (el.dataset.dim) document.querySelectorAll(`[data-dim="${el.dataset.dim}"]`).forEach(o => { if (o !== el) o.value = el.value });   // 다른 쪽 칸도 같은 값으로
   const t = $("#dimSum"); if (t) t.textContent = areaVars(R.S).FT + "㎡";
   const pb = $("#planBase"); if (pb) pb.innerHTML = planSvg("base", baseOpts()); p3dSync();
@@ -3633,9 +3672,10 @@ function docOptsDraw() {                              // 상세견적서 화면 
   let box = $("#docOpts"); if (!box) { box = document.createElement("div"); box.id = "docOpts"; box.className = "card"; box.style.cssText = "max-width:900px;margin:0 auto 14px"; dv.parentNode.insertBefore(box, dv) }
   const d = String(E.info.dur ?? "").trim(), num = /^\d+(\.\d+)?$/.test(d), custom = !!d && !(num && DUR_PICK.includes(+d)), w = durAuto(), vt = validTo(), own = !!E.info.validTo && E.info.validTo !== addMonth(E.info.date, 1);
   const chip = (v, t) => `<button type="button" data-dur="${v}" aria-pressed="${v === "*" ? custom || docOptsDraw.open === true : !custom && !docOptsDraw.open && d === v}">${t}</button>`;
+  const picks = [...new Set([...DUR_PICK, w].filter(n => n > 0))].sort((a, b) => a - b);   // (v86) 자동 계산은 ‘추천’으로만 — 기간은 실장이 골라서 정한다
   box.innerHTML = `<div class="bd" style="display:flex;flex-direction:column;gap:12px">
-    <div><b>예상 공사 기간</b> <span class="note">고르면 견적서 첫 장에 그대로 나갑니다 · 지금: <b>${esc(durTxt())}</b></span>
-      <div class="cmpch" style="margin-top:6px">${chip("", `자동 · 약 ${w}주`)}${DUR_PICK.map(n => chip(String(n), n + "주")).join("")}${chip("*", "직접 입력")}</div>
+    <div><b>예상 공사 기간</b> ${d ? `<span class="note">견적서 첫 장에 그대로 나갑니다 · 지금: <b>${esc(durTxt())}</b></span> <button type="button" class="btn ghost sm" data-dur="">↺ 정하지 않음으로</button>` : `<b style="color:var(--warn)">아직 정하지 않았습니다 — 아래에서 골라 주세요</b> <span class="note">고객에게 설명할 기간입니다 · 안 고르면 견적서에는 자동 계산 ‘약 ${w}주’로 나갑니다</span>`}
+      <div class="cmpch" style="margin-top:6px">${picks.map(n => chip(String(n), n + "주" + (n === w ? " · 추천" : ""))).join("")}${chip("*", "직접 입력")}</div>
       ${custom || docOptsDraw.open ? `<input id="durIn" value="${esc(custom ? d : "")}" placeholder="예: 약 40일 · 12월 초 ~ 1월 중순 · 6.5" style="margin-top:6px;display:block;width:min(420px,100%)"><div class="note">숫자만 적으면 ‘약 ○주 (실측 후 확정)’, 글로 적으면 적은 그대로 나갑니다.</div>` : ""}</div>
     <div><b>견적 유효기간</b> <input type="date" id="validIn" value="${esc(vt)}" style="margin-left:6px;width:auto;display:inline-block;min-width:170px"> <span class="note">까지 · 기본은 견적일(${esc(E.info.date || "")})에서 한 달</span>${own ? ` <button type="button" class="btn ghost sm" data-validreset>↺ 한 달로</button>` : ""}</div>
     <div><b>견적서 메모</b> <span class="note">${E.memo ? "적어 둔 메모가 있습니다 · " : ""}견적서 맨 뒤 ‘특기사항’에 나갑니다. 적는 칸은 이 화면 맨 아래에 있습니다.</span> <button type="button" class="btn ghost sm" data-memogo>메모 적으러 가기 ↓</button></div>
