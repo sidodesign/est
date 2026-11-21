@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-21.86";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-21.87";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -49,6 +49,21 @@ return h.map(x=>(x>>>0).toString(16).padStart(8,"0")).join("")}
 const BASE = deep(window.SIDO_DATA || {});
 const STAFF_DATA = !!BASE.staffOnly;
 let D = deep(BASE);
+/* (v87) 실장 화면의 공정별 마진 — 사용자(2026-11-21): “각 공정별로 마진이 어떻게 되는지 정확하게 알려줄려고 해 그리고 실제 금액이 들어가는게 달라질 수 있으니 실장페이지에서 마진에 대한 금액변경 할 수 있게 만들어야해”.
+   실장용 데이터에는 원가가 없다(누구나 받을 수 있는 곳에 있는 파일이라 넣지 않는다). 로그인한 뒤 회사 서버가 내려 주는 원가표(costApply)를 받았을 때만 원가를 계산한다(COST_ON).
+   실장에게 보이는 것은 공정별 합계(판매 · 실공사비 · 마진)뿐이고, 줄마다의 원가는 전처럼 관리자 화면에서만 보인다. 공정의 실공사비는 실장이 그 견적에서 고칠 수 있다(E.costOv). */
+let COST_ON = false, COST_VER = "", MARGIN_OPEN = false;
+const noCost = () => STAFF_DATA && !COST_ON;
+function costApply(tb) {                              // tb = { v, margins: { 공정: 마진율 }, items: { 품목 id: [원가, 마진율 또는 null] } }
+  if (!STAFF_DATA || !tb || !tb.items) return false;
+  D.margins = tb.margins || {}; for (const it of D.catalog) { const r = tb.items[it.id]; if (!r) continue; it.cost = +r[0] || 0; if (r[1] !== null && r[1] !== undefined) it.margin = +r[1] }
+  COST_ON = true; COST_VER = tb.v || "1"; return true;
+}
+function costTable() {                                // 관리자 화면(원가 자료를 연 화면)이 서버에 올리는 표
+  const items = {}, has = v => v !== null && v !== undefined && v !== "";
+  for (const it of D.catalog) if (+it.cost > 0 || has(it.margin)) items[it.id] = [+it.cost || 0, has(it.margin) ? +it.margin : null];
+  const body = { margins: D.margins || {}, items }; return { ...body, v: "c" + sigH(JSON.stringify(body)).replace(/[^0-9]/g, "") };
+}
 if (MODE === "admin" && !STAFF_DATA) {
   const ov = store.get("sido3_override", null);
   if (ov && ov.base === BASE.version) Object.assign(D, ov.data);
@@ -146,8 +161,8 @@ const SET_PARTS = { [SET_GEN]: ["석고보드 (9.5T)", "각재 (30x30)", "MDF (9
 function unitCost(it, E) {
   if (it.costTable) return tableCost(it, E);
   if (it.costVar) return +((E.num.common || {})[it.costVar] || 0);
-  if (!STAFF_DATA && SET_PARTS[it.name]) { const c = SET_PARTS[it.name].reduce((a, n) => a + (+(byName[n] || {}).cost || 0), 0); if (c) return c }   // 세트 원가 = 구성품 원가 합 (구성품 원가가 바뀌면 바로 따라간다)
-  return STAFF_DATA ? 0 : (+it.cost || 0);
+  if (!noCost() && SET_PARTS[it.name]) { const c = SET_PARTS[it.name].reduce((a, n) => a + (+(byName[n] || {}).cost || 0), 0); if (c) return c }   // 세트 원가 = 구성품 원가 합 (구성품 원가가 바뀌면 바로 따라간다)
+  return noCost() ? 0 : (+it.cost || 0);
 }
 /* 실장에게 나가는 판매단가 (내보내기·'실장 페이지에 적용' 공용) */
 function staffPrice(i) { return i.tier ? +i.tier[i.tier.length - 1][2] : i.costTable || i.costVar ? 0 : i.fixedPrice ? +i.fixedPrice : i.cost ? roundPrice(i.cost / (1 - marginOf(i))) : 0 }
@@ -712,11 +727,11 @@ function finish(S, lines, errors, FT) {
     const f = !manual && it && !it.costTable && !it.costVar && !it.tier ? +fz[fpKey(l)] || 0 : 0;
     l.price = manual ? +l.manualPrice : it && it.tier ? tierPrice(it, tq[it.name] || 0) : (f || cur);
     if (f && f !== cur) { l.frozen = true; fzDiff++ }
-    const m = STAFF_DATA ? 0 : it ? marginOf(it) : (+D.margins[l.proc] || 0);
-    l.ucost = STAFF_DATA ? 0 : l.manualCost !== undefined && l.manualCost !== "" ? +l.manualCost : (it && !manual ? unitCost(it, E) : l.price * (1 - m));
+    const m = noCost() ? 0 : it ? marginOf(it) : (+(D.margins || {})[l.proc] || 0);
+    l.ucost = noCost() ? 0 : l.manualCost !== undefined && l.manualCost !== "" ? +l.manualCost : (it && !manual ? unitCost(it, E) : l.price * (1 - m));
     l.amt = Math.round(l.price * l.qty); l.cost = l.ucost * l.qty;
-    if (!STAFF_DATA && l.cq > 0 && l.cq < l.qty && !(l.manualCost !== undefined && l.manualCost !== "")) { l.cost = l.ucost * l.cq; l.ucost = l.qty ? l.cost / l.qty : l.ucost }   // 원가는 실제 쓰는 양으로 (남는 수량만큼은 이익으로 잡힌다)
-    if (!STAFF_DATA && l.set && l.useCost && l.detailAll && l.detailAll.length) { const c = l.detailAll.reduce((a, d) => a + d.qty * (+(byName[d.name] || {}).cost || 0), 0); if (c > 0) { l.cost = c; l.ucost = l.qty ? c / l.qty : c } }   // 세트 줄의 원가 = 실제 쓰는 양 × 낱개 원가 (식 수를 올림한 만큼은 이익으로 잡힌다)
+    if (!noCost() && l.cq > 0 && l.cq < l.qty && !(l.manualCost !== undefined && l.manualCost !== "")) { l.cost = l.ucost * l.cq; l.ucost = l.qty ? l.cost / l.qty : l.ucost }   // 원가는 실제 쓰는 양으로 (남는 수량만큼은 이익으로 잡힌다)
+    if (!noCost() && l.set && l.useCost && l.detailAll && l.detailAll.length) { const c = l.detailAll.reduce((a, d) => a + d.qty * (+(byName[d.name] || {}).cost || 0), 0); if (c > 0) { l.cost = c; l.ucost = l.qty ? c / l.qty : c } }   // 세트 줄의 원가 = 실제 쓰는 양 × 낱개 원가 (식 수를 올림한 만큼은 이익으로 잡힌다)
     l.tbd = !l.price && (l.manualPrice === undefined || l.manualPrice === "");
     if (!l.lump && (l.unit === "인" || l.unit === "롤" || /식대/.test(l.name))) l.lump = true;   // 인건비(몇 명)·벽지 롤 수·식대는 고객 견적서에 ‘1식’ 금액으로만 나간다 (계산 근거는 실장 화면에서만)
     if (l.opt) { optSum += l.amt; continue }   // 옵션 줄: 합계·공정별 집계에서 뺀다
@@ -724,6 +739,7 @@ function finish(S, lines, errors, FT) {
     const p = byProc[l.proc] = byProc[l.proc] || { amt: 0, cost: 0, 자재: 0, 노무: 0, 경비: 0 }; p.amt += l.amt; p.cost += l.cost; p[l.kind] = (p[l.kind] || 0) + l.amt;
     const s = bySpace[l.space] = bySpace[l.space] || { amt: 0 }; s.amt += l.amt;
   }
+  if (!noCost()) { const cov = E.costOv || {}; for (const pk in byProc) { const b = byProc[pk], v = cov[pk]; b.cost0 = b.cost; if (v !== undefined && v !== "" && +v >= 0) { cost += +v - b.cost; b.cost = +v; b.ov = true } } }   // (v87) 공정의 실공사비를 그 견적에서 고친 값 (E.costOv)
   const biz = Math.round(sum * (+E.biz || 0) / 100), unit = +D.settings.roundUnit || 10000;
   const pre = sum + biz, net = Math.floor(pre / unit) * unit, cut = net - pre, vat = Math.round(net * (D.settings.vat ?? 0.1));
   const main = lines.filter(l => !l.opt);   // lines = 합계에 들어가는 줄 · opt = 옵션 줄 · all = 둘 다
@@ -1498,6 +1514,47 @@ function goSpot(step, at) {                           // 그 단계로 가서(�
   if (!at) { window.scrollTo({ top: 0, behavior: "smooth" }); return }
   setTimeout(() => spotMark(at), 60);
 }
+/* (v87) 공정별 마진 표 — ‘확인’ 단계. 접어 둔다(고객과 같이 볼 때 보이지 않게). 실장 화면 = 서버가 원가표를 내려 줬을 때만 · 관리자 화면 = 늘.
+   실공사비 칸의 흐린 숫자 = 단가표 원가로 계산한 값. 실제로 드는 금액이 다르면 그 공정의 칸에 고쳐 적는다(E.costOv[공정] · 이 견적에만 · ↺ 로 되돌림). 고객 견적서 · 엑셀에는 나가지 않는다. */
+function marginCard() {
+  if (STAFF_DATA ? !COST_ON : !isAdmin) return "";
+  const ps = PROCS.filter(p => R.byProc[p]), pc = v => (Math.round(v * 1000) / 10).toFixed(1) + "%", net = R.net, cost = R.cost, nov = ps.filter(p => R.byProc[p].ov).length;
+  const zero = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)).length, adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
+  const row = p => { const b = R.byProc[p], mg = b.amt - b.cost, c0 = Math.round(b.cost0 ?? b.cost);
+    return `<tr><td><b>${PROC_LABEL[p]}</b></td><td class="num">${won(b.amt)}</td><td class="num" style="white-space:nowrap"><input class="q" type="number" min="0" step="1000" inputmode="numeric" style="width:124px" data-costov="${p}" value="${b.ov ? Math.round(b.cost) : ""}" placeholder="${c0}" aria-label="${PROC_LABEL[p]} 실공사비">${b.ov ? ` <button type="button" class="btn ghost sm" data-costauto="${p}" title="계산한 값 ${won(c0)}원으로 되돌립니다">↺</button>` : ""}</td><td class="num"${mg < 0 ? ' style="color:var(--warn)"' : ""}>${won(Math.round(mg))}</td><td class="num"><b>${b.amt ? pc(mg / b.amt) : "-"}</b></td></tr>` };
+  return `<details class="pgroup" id="marginCard"${MARGIN_OPEN ? " open" : ""}><summary style="cursor:pointer;padding:10px 14px;font-weight:700">공정별 마진 · 실공사비 <span class="note" style="font-weight:400">눌러서 보기 · 고객 견적서에는 나가지 않습니다</span></summary>
+    <div class="tbl" style="padding:0 14px 6px"><table><thead><tr><th>공정</th><th class="num">판매 금액</th><th class="num">실공사비</th><th class="num">마진</th><th class="num">마진율</th></tr></thead><tbody>${ps.map(row).join("")}
+    <tr><td>기업이윤 · 절사</td><td class="num">${won(R.biz + R.cut)}</td><td class="num">-</td><td class="num">${won(R.biz + R.cut)}</td><td class="num">-</td></tr>
+    <tr style="font-weight:700;border-top:2px solid var(--line)"><td>합계 (VAT 별도)</td><td class="num">${won(net)}</td><td class="num">${won(Math.round(cost))}</td><td class="num">${won(Math.round(net - cost))}</td><td class="num">${net ? pc((net - cost) / net) : "-"}</td></tr></tbody></table></div>
+    <p class="note" style="margin:0 14px 6px">실공사비 칸의 <b>흐린 숫자</b>는 단가표의 원가로 계산한 값입니다. 현장에서 실제로 드는 금액이 다르면 그 공정의 칸에 <b>고쳐 적으세요</b>(이 견적에만 적용 · ↺ 로 되돌림). 마진 = 판매 금액 − 실공사비.${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-costauto="*">↺ 모두 계산한 값으로</button>` : ""}</p>
+    ${zero ? `<p class="note down" style="margin:0 14px 6px">원가가 없는 줄이 ${zero}개 있습니다 — 그 줄은 실공사비가 0으로 잡혀 마진이 실제보다 높게 보입니다.</p>` : ""}
+    ${adm ? `<p class="note" style="margin:0 14px 8px">실장 화면에도 이 표가 보입니다(줄마다의 원가는 보이지 않습니다): <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button> <span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</p>` : ""}</details>`;
+}
+function marginRedraw() { const c = $("#marginCard"); if (c) c.outerHTML = marginCard() || '<div id="marginCard" hidden></div>' }
+function costShown() { R = compute(); renderSummary(); marginRedraw() }
+function costOff() { COST_ON = false; COST_VER = ""; for (const it of D.catalog) { delete it.cost; delete it.margin } delete D.margins; costShown() }
+async function costKeep(tb) { try { if (!keepOk() || !SRV.me || SRV.me.role !== "staff") return; const k = SRV.me.id + "|#cost"; await keepDo("readwrite", st => tb ? st.put({ x: tb }, k) : st.delete(k)) } catch (e) { } }   // 꺼져 있을 때를 위해, 받아 둔 내 견적과 같은 곳에 둔다 (로그아웃하면 같이 지워진다)
+async function costKept() { try { const w = pendWho(); if (!keepOk() || !w || w === "?") return null; const v = await keepDo("readonly", st => st.get(w + "|#cost")); return v && v.x ? v.x : null } catch (e) { return null } }
+async function costSync() {                           // 실장: 서버가 공정별 마진을 보여 주기로 했으면 원가표를 받는다(꺼져 있으면 이 기기에 받아 둔 것) · 관리자: 원가표가 바뀌었으면 서버에 올린다
+  if (!SRV) return;
+  try {
+    if (STAFF_DATA) {
+      if (SRV.me && SRV.me.role === "staff") { const v = SRV.me.cost || ""; if (!v) { if (COST_ON) costOff(); costKeep(null); return } if (COST_ON && COST_VER === v) return; const tb = await srv("GET", "/api/costs"); if (costApply(tb)) { costKeep(tb); costShown() } }
+      else if (SRV.down && !COST_ON) { const tb = await costKept(); if (tb && costApply(tb)) costShown() }
+    } else if (SRV.me && SRV.me.role === "admin" && D.catalog.some(i => +i.cost > 0)) { const tb = costTable(); let h = await srv("GET", "/api/costs"); if (h && h.v !== tb.v) h = await srv("PUT", "/api/costs", tb); SRV.costHead = h; marginRedraw() }
+  } catch (e) { }
+}
+document.addEventListener("toggle", ev0 => { const d = ev0.target; if (d && d.id === "marginCard" && d.tagName === "DETAILS") MARGIN_OPEN = d.open }, true);
+document.addEventListener("change", ev0 => {          // 공정의 실공사비를 고쳐 적는다 (비우면 계산한 값)
+  const el = ev0.target; if (!el.dataset || el.dataset.costov === undefined) return; const pk = el.dataset.costov, v = el.value.trim();
+  E.costOv = E.costOv || {}; if (v === "" || !(+v >= 0)) delete E.costOv[pk]; else E.costOv[pk] = Math.round(+v); if (!Object.keys(E.costOv).length) delete E.costOv;
+  MARGIN_OPEN = true; costShown(); save();
+});
+document.addEventListener("click", async ev0 => {
+  const t0 = ev0.target; if (!t0.closest) return; const a = t0.closest("[data-costauto]"), o = t0.closest("[data-coston]");
+  if (a) { if (E.costOv) { if (a.dataset.costauto === "*") delete E.costOv; else { delete E.costOv[a.dataset.costauto]; if (!Object.keys(E.costOv).length) delete E.costOv } } MARGIN_OPEN = true; costShown(); save(); return }
+  if (o) { try { SRV.costHead = await srv("POST", "/api/costs", { on: o.dataset.coston === "1" }); toast(SRV.costHead.on ? "실장 화면에 공정별 마진을 보여 줍니다. 실장이 화면을 새로 열면 보입니다." : "실장 화면에서 공정별 마진을 껐습니다. 실장이 화면을 새로 열면 사라집니다.") } catch (e) { toast("바꾸지 못했습니다. " + (e && e.msg || "")) } MARGIN_OPEN = true; marginRedraw() }
+});
 function checkCard(steps) {
   const cs = estCheck(steps), n = cs.filter(c => c.lv < 3).length, mark = ["", "⚠", "❓", "ℹ"], col = ["", "var(--warn)", "var(--warn)", "var(--muted,#667)"];
   return `<div class="pgroup"><h3>견적 검수 <span class="note">${n ? `확인할 것 ${n}건` : "걸리는 항목 없음"} · 견적서를 내보내기 전에 자동으로 살펴본 결과입니다</span></h3>
@@ -3104,6 +3161,7 @@ function renderConfirm(body, steps) {
     <p class="note" style="margin:4px 14px;color:var(--warn)">⚠ 상세견적서로 넘어가기 전에 아래 ‘견적 검수’와 공간별 공사를 한 번 더 확인해 주세요. 챗봇에 ‘뭐 안 했지?’라고 물어도 됩니다.</p>
     ${R.tbd.length ? `<p class="note down" style="margin:4px 14px">단가 미정 ${R.tbd.length}건은 견적서에 ‘별도 협의’로 표시됩니다: ${esc(R.tbd.map(l => l.name).join(", "))}</p>` : ""}
     ${checkCard(steps)}
+    ${marginCard() || '<div id="marginCard" hidden></div>'}
     ${D.stepLines ? planOverview() : ""}
     <div class="confirm">${list}</div>
     <div class="toolbar" style="padding:8px 14px 14px"><button type="button" class="btn primary" data-act="doc">상세견적서 보기</button><button type="button" class="btn" data-act="save">저장</button></div>`;
@@ -5408,7 +5466,7 @@ async function srvConnect() {
   if (SRV.me && SRV.me.ai && !KB_AI) { KB_AI = srvAi; try { helpDraw() } catch (e) { } }   // 서버에 AI 키가 있으면 회사 주소의 챗봇도 AI 로 답한다 (없으면 저장된 답만)
   if (ADM_OUT && location.search) { try { history.replaceState(null, "", "/admin/") } catch (e) { } }
   if (SRV.token && SRV.me && !SRV.front) { try { history.replaceState(null, "", "/") } catch (e) { } }   // 주소 칸에 로그인 열쇠가 남지 않게 한다 — 주소를 복사해 남에게 보내도 로그인까지 넘어가지 않는다. 새로 고치면 첫 화면이 이 기기에 남은 열쇠로 다시 들여보낸다
-  srvChip();
+  srvChip(); costSync();                               // (v87) 공정별 마진: 실장 = 원가표 받기 · 관리자 = 원가표 올리기
   SRV.list = null; if (!$("#view-saved").hidden) renderSaved(); planLibCheck(); srvNewer(); verCheck();   // 쓰던 견적이 다른 곳(관리자·다른 기기)에서 고쳐졌으면 그 내용으로 맞춘다
   if (SRV.me && SRV.token) { swKeep(); pendSync(); setTimeout(keepSync, 2500) }   // 이 기기에 화면 파일을 기억시키고, 끊긴 동안 저장한 견적이 있으면 올린다
   if (SRV.token) { const eb = document.querySelector(".estbar"); if (eb) eb.outerHTML = estBar() }   // ‘현장 정보’ 맨 위 안내(회사 저장소에 저절로 임시저장 · 지금은 꺼져 있음)를 연결 상태에 맞춘다
