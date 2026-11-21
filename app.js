@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-21.87";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-21.88";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -739,7 +739,8 @@ function finish(S, lines, errors, FT) {
     const p = byProc[l.proc] = byProc[l.proc] || { amt: 0, cost: 0, 자재: 0, 노무: 0, 경비: 0 }; p.amt += l.amt; p.cost += l.cost; p[l.kind] = (p[l.kind] || 0) + l.amt;
     const s = bySpace[l.space] = bySpace[l.space] || { amt: 0 }; s.amt += l.amt;
   }
-  if (!noCost()) { const cov = E.costOv || {}; for (const pk in byProc) { const b = byProc[pk], v = cov[pk]; b.cost0 = b.cost; if (v !== undefined && v !== "" && +v >= 0) { cost += +v - b.cost; b.cost = +v; b.ov = true } } }   // (v87) 공정의 실공사비를 그 견적에서 고친 값 (E.costOv)
+  if (!noCost()) { const cov = E.costOv || {}, mov = E.mgOv || {};   // (v88) 공정의 마진율을 실장이 고친 값(E.mgOv — 공사 금액이 바뀌어도 그 비율) · (v87) 실공사비를 고친 값(E.costOv)
+    for (const pk in byProc) { const b = byProc[pk]; b.cost0 = b.cost; let c = null; if (mov[pk] !== undefined && mov[pk] !== "" && isFinite(+mov[pk])) c = b.amt * (1 - +mov[pk]); else if (cov[pk] !== undefined && cov[pk] !== "" && +cov[pk] >= 0) c = +cov[pk]; if (c !== null) { cost += c - b.cost; b.cost = c; b.ov = true } } }
   const biz = Math.round(sum * (+E.biz || 0) / 100), unit = +D.settings.roundUnit || 10000;
   const pre = sum + biz, net = Math.floor(pre / unit) * unit, cut = net - pre, vat = Math.round(net * (D.settings.vat ?? 0.1));
   const main = lines.filter(l => !l.opt);   // lines = 합계에 들어가는 줄 · opt = 옵션 줄 · all = 둘 다
@@ -1514,24 +1515,32 @@ function goSpot(step, at) {                           // 그 단계로 가서(�
   if (!at) { window.scrollTo({ top: 0, behavior: "smooth" }); return }
   setTimeout(() => spotMark(at), 60);
 }
-/* (v87) 공정별 마진 표 — ‘확인’ 단계. 접어 둔다(고객과 같이 볼 때 보이지 않게). 실장 화면 = 서버가 원가표를 내려 줬을 때만 · 관리자 화면 = 늘.
-   실공사비 칸의 흐린 숫자 = 단가표 원가로 계산한 값. 실제로 드는 금액이 다르면 그 공정의 칸에 고쳐 적는다(E.costOv[공정] · 이 견적에만 · ↺ 로 되돌림). 고객 견적서 · 엑셀에는 나가지 않는다. */
-function marginCard() {
-  if (STAFF_DATA ? !COST_ON : !isAdmin) return "";
-  const ps = PROCS.filter(p => R.byProc[p]), pc = v => (Math.round(v * 1000) / 10).toFixed(1) + "%", net = R.net, cost = R.cost, nov = ps.filter(p => R.byProc[p].ov).length;
-  const zero = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)).length, adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
-  const row = p => { const b = R.byProc[p], mg = b.amt - b.cost, c0 = Math.round(b.cost0 ?? b.cost);
-    return `<tr><td><b>${PROC_LABEL[p]}</b></td><td class="num">${won(b.amt)}</td><td class="num" style="white-space:nowrap"><input class="q" type="number" min="0" step="1000" inputmode="numeric" style="width:124px" data-costov="${p}" value="${b.ov ? Math.round(b.cost) : ""}" placeholder="${c0}" aria-label="${PROC_LABEL[p]} 실공사비">${b.ov ? ` <button type="button" class="btn ghost sm" data-costauto="${p}" title="계산한 값 ${won(c0)}원으로 되돌립니다">↺</button>` : ""}</td><td class="num"${mg < 0 ? ' style="color:var(--warn)"' : ""}>${won(Math.round(mg))}</td><td class="num"><b>${b.amt ? pc(mg / b.amt) : "-"}</b></td></tr>` };
-  return `<details class="pgroup" id="marginCard"${MARGIN_OPEN ? " open" : ""}><summary style="cursor:pointer;padding:10px 14px;font-weight:700">공정별 마진 · 실공사비 <span class="note" style="font-weight:400">눌러서 보기 · 고객 견적서에는 나가지 않습니다</span></summary>
-    <div class="tbl" style="padding:0 14px 6px"><table><thead><tr><th>공정</th><th class="num">판매 금액</th><th class="num">실공사비</th><th class="num">마진</th><th class="num">마진율</th></tr></thead><tbody>${ps.map(row).join("")}
-    <tr><td>기업이윤 · 절사</td><td class="num">${won(R.biz + R.cut)}</td><td class="num">-</td><td class="num">${won(R.biz + R.cut)}</td><td class="num">-</td></tr>
-    <tr style="font-weight:700;border-top:2px solid var(--line)"><td>합계 (VAT 별도)</td><td class="num">${won(net)}</td><td class="num">${won(Math.round(cost))}</td><td class="num">${won(Math.round(net - cost))}</td><td class="num">${net ? pc((net - cost) / net) : "-"}</td></tr></tbody></table></div>
-    <p class="note" style="margin:0 14px 6px">실공사비 칸의 <b>흐린 숫자</b>는 단가표의 원가로 계산한 값입니다. 현장에서 실제로 드는 금액이 다르면 그 공정의 칸에 <b>고쳐 적으세요</b>(이 견적에만 적용 · ↺ 로 되돌림). 마진 = 판매 금액 − 실공사비.${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-costauto="*">↺ 모두 계산한 값으로</button>` : ""}</p>
-    ${zero ? `<p class="note down" style="margin:0 14px 6px">원가가 없는 줄이 ${zero}개 있습니다 — 그 줄은 실공사비가 0으로 잡혀 마진이 실제보다 높게 보입니다.</p>` : ""}
-    ${adm ? `<p class="note" style="margin:0 14px 8px">실장 화면에도 이 표가 보입니다(줄마다의 원가는 보이지 않습니다): <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button> <span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</p>` : ""}</details>`;
+/* (v88) 공정별 마진 — 견적 합계 칸의 공정 줄 바로 아래. 사용자(2026-11-21): “마진에 관한내용은 안올라오고 있어 … 견적합계 밑에 각 공정별로 체크하면 공정들도 추가되고 마진도 같이 적고 실장들이 수정할 수 있게 만들어줘야해
+   그래서 각 실장들이 얼마의 마진을 생각하고 견적을 넣는지 알 수 있지 그걸 회사pc에 다 저장되게 … 상세견적서에서는 보이지도 않아야”.
+   · 공정 줄마다 ‘마진 [ ]% 금액’ — 칸의 흐린 숫자 = 단가표 원가로 계산한 마진율. 실장이 고치면 그 공정은 그 비율로 계산한다(E.mgOv[공정] = 0.3 · 금액이 바뀌어도 비율 유지 · ↺ 되돌림).
+   · 실장 화면 = 로그인해서 서버가 원가표를 내려 줬을 때만(COST_ON) · 관리자 화면 = 늘. ‘마진 가리기’로 감출 수 있다(고객과 같이 볼 때 · 그 기기에 기억).
+   · 저장할 때 E.mg(공급가 · 실공사비 · 마진율 · 고친 공정 수)를 같이 적어 회사 저장소 목록에서 실장별 마진이 보인다. 고객 견적서 · 인쇄 · 엑셀에는 나가지 않는다. */
+const mgCan = () => STAFF_DATA ? COST_ON : isAdmin;
+const mgHidden = () => { try { return localStorage.getItem("sido_mg_hide") === "1" } catch (e) { return false } };
+const mgPct = v => (Math.round(v * 1000) / 10).toFixed(1);
+function mgRow(p) {                                   // 공정 줄 안에 들어가는 마진 칸: [ 28.1 ]% (↺) — 마우스를 올리면 마진 금액·실공사비
+  const b = R.byProc[p]; if (!b || !(b.amt > 0)) return ""; const mg = b.amt - b.cost, r0 = (b.amt - (b.cost0 ?? b.cost)) / b.amt;
+  return `<span class="mgi${b.ov ? " ov" : ""}" title="마진 ${won(Math.round(mg))}원 · 실공사비 ${won(Math.round(b.cost))}원${b.ov ? " · 고치기 전 " + mgPct(r0) + "%" : ""}">${b.ov ? `<button type="button" data-mgauto="${p}" title="계산한 값 ${mgPct(r0)}%로 되돌립니다" aria-label="${PROC_LABEL[p]} 마진 되돌리기">↺</button>` : ""}<input type="number" step="0.5" min="-100" max="99" inputmode="decimal" data-mgov="${p}" value="${b.ov ? mgPct(mg / b.amt) : ""}" placeholder="${mgPct(r0)}" aria-label="${PROC_LABEL[p]} 마진율 %">%</span>`;
 }
-function marginRedraw() { const c = $("#marginCard"); if (c) c.outerHTML = marginCard() || '<div id="marginCard" hidden></div>' }
-function costShown() { R = compute(); renderSummary(); marginRedraw() }
+function mgTotal() {                                  // 합계 아래: 실공사비 · 마진 합계 · 안내 (관리자 화면은 아래에 원래 있던 마진 막대가 합계를 보여 주므로 안내만)
+  const nov = PROCS.filter(p => R.byProc[p] && R.byProc[p].ov).length, zero = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)).length, adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
+  return `<div class="mgbox">${STAFF_DATA ? `<div class="srow sub"><span>실공사비</span><span>${won(Math.round(R.cost))}</span></div><div class="srow"><span>마진 <small class="note">기업이윤 포함</small></span><b>${won(Math.round(R.net - R.cost))} · ${R.net ? mgPct(R.margin) + "%" : "-"}</b></div>` : ""}
+    <div class="note">위 <b>마진 %</b> 칸을 고치면 그 공정의 마진이 바뀝니다 (이 견적에만 · 판매 금액은 그대로 · 칸에 마우스를 올리면 금액). <b>고객 견적서에는 나가지 않습니다.</b>${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-mgauto="*">↺ 모두 되돌리기</button>` : ""}</div>
+    <div class="mgall"><span>모든 공정을</span><input id="mgAll" type="number" step="0.5" min="-100" max="99" inputmode="decimal" placeholder="예: 30" aria-label="모든 공정의 마진율 %"><span>% 로</span><button type="button" class="btn sm" data-mgall>맞추기</button></div>
+    ${STAFF_DATA && zero ? `<div class="note down" style="margin-top:4px">원가가 없는 줄 ${zero}개 — 그만큼 마진이 높게 보입니다.</div>` : ""}
+    ${adm ? `<div class="note" style="margin-top:6px">실장 화면에도 공정별 마진이 보입니다: <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button><br><span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</div>` : ""}</div>`;
+}
+function mgNote() {                                   // 마진이 안 보일 때 까닭 한 줄 (실장 화면 · 회사 주소로 연 화면에서만)
+  if (!STAFF_DATA || !SRV || COST_ON) return "";
+  return `<div class="note" style="margin-top:8px">공정별 마진은 ${SRV.me && SRV.me.role === "staff" ? "관리자가 원가표를 올려 두면(관리자 화면을 한 번 열면)" : SRV.down ? "회사 컴퓨터가 켜져 있을 때 이 기기로 한 번 들어온 뒤부터" : "로그인하면"} 보입니다.</div>`;
+}
+function mgSnap() { if (mgCan() && R.net > 0) E.mg = { net: R.net, cost: Math.round(R.cost), m: Math.round(R.margin * 1000) / 1000, ov: Object.keys(E.mgOv || {}).length + Object.keys(E.costOv || {}).length } }   // 저장할 때: 이 견적의 마진 요약 (회사 저장소 목록에 보인다)
+function costShown() { R = compute(); renderSummary() }
 function costOff() { COST_ON = false; COST_VER = ""; for (const it of D.catalog) { delete it.cost; delete it.margin } delete D.margins; costShown() }
 async function costKeep(tb) { try { if (!keepOk() || !SRV.me || SRV.me.role !== "staff") return; const k = SRV.me.id + "|#cost"; await keepDo("readwrite", st => tb ? st.put({ x: tb }, k) : st.delete(k)) } catch (e) { } }   // 꺼져 있을 때를 위해, 받아 둔 내 견적과 같은 곳에 둔다 (로그아웃하면 같이 지워진다)
 async function costKept() { try { const w = pendWho(); if (!keepOk() || !w || w === "?") return null; const v = await keepDo("readonly", st => st.get(w + "|#cost")); return v && v.x ? v.x : null } catch (e) { return null } }
@@ -1539,21 +1548,24 @@ async function costSync() {                           // 실장: 서버가 공�
   if (!SRV) return;
   try {
     if (STAFF_DATA) {
-      if (SRV.me && SRV.me.role === "staff") { const v = SRV.me.cost || ""; if (!v) { if (COST_ON) costOff(); costKeep(null); return } if (COST_ON && COST_VER === v) return; const tb = await srv("GET", "/api/costs"); if (costApply(tb)) { costKeep(tb); costShown() } }
-      else if (SRV.down && !COST_ON) { const tb = await costKept(); if (tb && costApply(tb)) costShown() }
-    } else if (SRV.me && SRV.me.role === "admin" && D.catalog.some(i => +i.cost > 0)) { const tb = costTable(); let h = await srv("GET", "/api/costs"); if (h && h.v !== tb.v) h = await srv("PUT", "/api/costs", tb); SRV.costHead = h; marginRedraw() }
+      if (SRV.me && SRV.me.role === "staff") { const v = SRV.me.cost || ""; if (!v) { if (COST_ON) costOff(); else renderSummary(); costKeep(null); return } if (COST_ON && COST_VER === v) return; const tb = await srv("GET", "/api/costs"); if (costApply(tb)) { costKeep(tb); costShown() } }
+      else if (SRV.down && !COST_ON) { const tb = await costKept(); if (tb && costApply(tb)) costShown(); else renderSummary() }
+    } else if (SRV.me && SRV.me.role === "admin" && D.catalog.some(i => +i.cost > 0)) { const tb = costTable(); let h = await srv("GET", "/api/costs"); if (h && h.v !== tb.v) h = await srv("PUT", "/api/costs", tb); SRV.costHead = h; renderSummary() }
   } catch (e) { }
 }
-document.addEventListener("toggle", ev0 => { const d = ev0.target; if (d && d.id === "marginCard" && d.tagName === "DETAILS") MARGIN_OPEN = d.open }, true);
-document.addEventListener("change", ev0 => {          // 공정의 실공사비를 고쳐 적는다 (비우면 계산한 값)
-  const el = ev0.target; if (!el.dataset || el.dataset.costov === undefined) return; const pk = el.dataset.costov, v = el.value.trim();
-  E.costOv = E.costOv || {}; if (v === "" || !(+v >= 0)) delete E.costOv[pk]; else E.costOv[pk] = Math.round(+v); if (!Object.keys(E.costOv).length) delete E.costOv;
-  MARGIN_OPEN = true; costShown(); save();
+document.addEventListener("change", ev0 => {          // 공정의 마진율(%)을 고쳐 적는다 (비우면 계산한 값)
+  const el = ev0.target; if (!el.dataset || el.dataset.mgov === undefined) return; const pk = el.dataset.mgov, v = el.value.trim();
+  E.mgOv = E.mgOv || {}; if (v === "" || !isFinite(+v)) delete E.mgOv[pk]; else E.mgOv[pk] = Math.round(Math.max(-1, Math.min(0.99, +v / 100)) * 1000) / 1000;
+  if (E.costOv) { delete E.costOv[pk]; if (!Object.keys(E.costOv).length) delete E.costOv } if (!Object.keys(E.mgOv).length) delete E.mgOv;
+  costShown(); save();
 });
 document.addEventListener("click", async ev0 => {
-  const t0 = ev0.target; if (!t0.closest) return; const a = t0.closest("[data-costauto]"), o = t0.closest("[data-coston]");
-  if (a) { if (E.costOv) { if (a.dataset.costauto === "*") delete E.costOv; else { delete E.costOv[a.dataset.costauto]; if (!Object.keys(E.costOv).length) delete E.costOv } } MARGIN_OPEN = true; costShown(); save(); return }
-  if (o) { try { SRV.costHead = await srv("POST", "/api/costs", { on: o.dataset.coston === "1" }); toast(SRV.costHead.on ? "실장 화면에 공정별 마진을 보여 줍니다. 실장이 화면을 새로 열면 보입니다." : "실장 화면에서 공정별 마진을 껐습니다. 실장이 화면을 새로 열면 사라집니다.") } catch (e) { toast("바꾸지 못했습니다. " + (e && e.msg || "")) } MARGIN_OPEN = true; marginRedraw() }
+  const t0 = ev0.target; if (!t0.closest) return; const a = t0.closest("[data-mgauto]"), o = t0.closest("[data-coston]"), hd = t0.closest("[data-mghide]");
+  if (a) { const pk = a.dataset.mgauto; for (const k of ["mgOv", "costOv"]) if (E[k]) { if (pk === "*") delete E[k]; else { delete E[k][pk]; if (!Object.keys(E[k]).length) delete E[k] } } costShown(); save(); return }
+  if (hd) { try { if (mgHidden()) localStorage.removeItem("sido_mg_hide"); else localStorage.setItem("sido_mg_hide", "1") } catch (e) { } renderSummary(); return }
+  if (t0.closest("[data-mgall]")) { const el = $("#mgAll"), v = el ? el.value.trim() : ""; if (v === "" || !isFinite(+v)) { toast("맞출 마진율(%)을 숫자로 적어 주세요. 예: 30"); return }   // 모든 공정의 마진을 한 번에 (실장이 ‘이 현장은 30%’처럼 생각할 때)
+    const r = Math.round(Math.max(-1, Math.min(0.99, +v / 100)) * 1000) / 1000; E.mgOv = {}; for (const pk of PROCS) if (R.byProc[pk] && R.byProc[pk].amt > 0) E.mgOv[pk] = r; delete E.costOv; costShown(); save(); toast(`모든 공정의 마진을 ${mgPct(r)}%로 맞췄습니다. 공정마다 다시 고칠 수 있고, ‘↺ 모두 되돌리기’로 계산한 값으로 돌아갑니다.`); return }
+  if (o) { try { SRV.costHead = await srv("POST", "/api/costs", { on: o.dataset.coston === "1" }); toast(SRV.costHead.on ? "실장 화면에 공정별 마진을 보여 줍니다. 실장이 화면을 새로 열면 보입니다." : "실장 화면에서 공정별 마진을 껐습니다. 실장이 화면을 새로 열면 사라집니다.") } catch (e) { toast("바꾸지 못했습니다. " + (e && e.msg || "")) } renderSummary() }
 });
 function checkCard(steps) {
   const cs = estCheck(steps), n = cs.filter(c => c.lv < 3).length, mark = ["", "⚠", "❓", "ℹ"], col = ["", "var(--warn)", "var(--warn)", "var(--muted,#667)"];
@@ -1913,10 +1925,11 @@ function helpWoodFollow(q, p) {                       // 계산·치수 표에 �
   return null;
 }
 function helpBathSay(q) { const qs = q.replace(/\s+/g, "");   // (v71) 욕실마다 공사 범위를 말로 바꾼다 — helpDo 맨 앞에서 부른다(‘견적 어떻게 내’ 같은 큰 질문 안내보다 먼저)
-  { const md = /덧방/.test(qs) ? "over" : /(도기|수전).{0,5}만/.test(qs) ? "fix" : /전체교체|전체로교체|전부교체|올철거|전체철거|철거하고새로/.test(qs) ? "full" : "", bs = md ? bathList() : [];   // (v71) ‘안방 욕실은 덧방으로 해 줘’ · ‘욕실 둘 다 덧방’ · ‘덧방은 어디서 넣어?’ — 욕실마다 공사 범위를 고른다
+  { const md = /덧방/.test(qs) ? "over" : /(도기|수전).{0,5}만/.test(qs) ? "fix" : /전체교체|전체로교체|전부교체|올철거|전체철거|철거하고새로/.test(qs) ? "full" : /(안함|안해|안할|빼줘|빼고|제외해|공사안|그대로둬|그대로두)/.test(qs) && /(안방|부부|공용|거실|욕실1|욕실2|1번|2번|한칸|하나)/.test(qs) && /욕실|화장실/.test(qs) && !/타일|도기|수전|천장|환풍기|거울|방수|철거|줄눈|문|필름/.test(qs) ? "none" : "", bs = md ? bathList() : [];   // (v88) ‘안방 욕실은 안 해’ = 그 욕실은 공사하지 않음 (화면에서 고르는 칸을 없앴으므로 말로 바꾼다)   // (v71) ‘안방 욕실은 덧방으로 해 줘’ · ‘욕실 둘 다 덧방’ · ‘덧방은 어디서 넣어?’ — 욕실마다 공사 범위를 고른다
     if (md && bs.length && /욕실|화장실|덧방/.test(qs) && qs.length <= 34 && !/(뭐야|뭔가|이란|차이|장단점|하자|주의|순서|기간|며칠|가능|조건|괜찮|문제|두께|높이|문턱)/.test(qs)) {
-      const act = helpIsAct(q), ask = /어디|어떻게|넣|견적|고르|바꾸|바꿔|설정|선택|체크|하려면|할래|할게/.test(qs);
-      if (act || ask) { const lab = bathLabel(md), where = helpRow("고르는 곳", "‘현장 정보 → 공간’의 ‘욕실 공사 범위’입니다. 욕실마다 전체 교체 · 덧방 · 도기·수전만 · 안 함 가운데 고릅니다.") + helpRow("바뀌는 것", "덧방으로 고른 욕실은 철거와 방수가 빠지고 타일·천장·도기는 그대로 들어갑니다. ‘도기·수전만’은 타일과 천장도 빠집니다.");
+      const named = /(안방|부부|공용|거실|욕실1|욕실2|1번|2번|둘다|두칸|모두|전부)/.test(qs), ask = /어디|어떻게|넣|견적|고르|바꾸|바꿔|설정|선택|체크|하려면|할래|할게/.test(qs);
+      const act = helpIsAct(q) || (named && !ask && (md === "none" || /(만|으로|로|해|함|해요|합니다)$/.test(qs.replace(/[?？!.~]+$/, ""))));   // (v88) ‘안방 욕실은 안 해’ · ‘욕실2는 도기 수전만’처럼 어느 욕실인지 짚어 말하면 바로 바꾼다 (화면에 고르는 칸이 없으므로)
+      if (act || ask) { const lab = bathLabel(md), where = helpRow("바꾸는 법", "화면에서 고르는 칸은 없고 이렇게 말로 바꿉니다: <code data-helpfill>안방 욕실은 덧방으로 해 줘</code> <code data-helpfill>욕실2는 도기 수전만</code> <code data-helpfill>안방 욕실은 안 해</code> <code data-helpfill>욕실 둘 다 전체 교체로</code> · ‘욕실·타일’ 단계 맨 위에 지금 상태가 한 줄로 나옵니다.") + helpRow("바뀌는 것", "덧방으로 고른 욕실은 철거와 방수가 빠지고 타일·천장·도기는 그대로 들어갑니다. ‘도기·수전만’은 타일과 천장도 빠집니다.");
         const pick = /둘다|두칸|모두|전부|다덧방|전체욕실|욕실전부/.test(qs) ? bs : /안방|부부|욕실2|2번/.test(qs) ? bs.filter(s => s.id === "bath2") : /거실|공용|욕실1|1번/.test(qs) ? bs.filter(s => s.id === "bath1") : bs.length === 1 ? bs : [];
         if (!act || !pick.length) return `<div class="hk">욕실마다 공사 범위를 따로 고릅니다. 어느 욕실을 ‘${esc(lab)}’${bathRo(lab).slice(lab.length)} 할까요?</div>` + where + `<div class="hm">${bs.map(s => `<button type="button" class="lk" data-bathmode="${s.id}|${md}">${esc(s.name)}</button>`).join("")}${bs.length > 1 ? `<button type="button" class="lk" data-bathmode="*|${md}">모두</button>` : ""}</div>`;
         for (const s of pick) bathModeSet(s.id, md); refresh(true);
@@ -2791,6 +2804,10 @@ document.addEventListener("click", ev0 => { const t = ev0.target; if (!t.closest
     if (id === "*") for (const s of bs) bathModeSet(s.id, m); else bathModeSet(id, m);
     refresh(true); toast(`${id === "*" ? "욕실 모두" : (bs.find(s => s.id === id) || {}).name || "욕실"} → ‘${bathRo(bathLabel(m)).replace(/(로|으로)$/, "’$1")} 바꿨습니다. 철거·방수·타일·도기 수량이 따라 바뀝니다.`); return }
   if (t.closest("[data-tdmore]")) { TD_MORE = !TD_MORE; renderChecklist() } });
+function bathModeNote() {                             // (v88) 욕실 공사 범위를 고르는 칸은 화면에서 뺐다(사용자: “아직 상세하게 정해지지도 않았는데 들어가서 불편해 없애”). 챗봇의 ‘기본 공사’처럼 덧방으로 만든 견적은 값(E.bathMode)이 남아 있으므로, 그런 욕실이 있을 때만 한 줄로 알린다
+  const bs = bathList().filter(s => bathModeOf(s.id) !== "full"); if (!bs.length) return "";
+  return `<p class="note" style="margin:6px 14px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${bs.map(s => `<b>${esc(s.name)}</b>: ${esc(bathLabel(bathModeOf(s.id)))}(으)로 계산 중`).join(" · ")} — 그만큼 철거·방수·타일 수량이 빠져 있습니다. <button type="button" class="btn ghost sm" data-bathmode="*|full">↺ 모두 전체 교체로</button></p>`;
+}
 function bathSum(st) {                                // 욕실 구성: 타일을 뺀 도기·수전·천장·환풍기·거울장·악세서리·칸막이·설치비가 합쳐서, 1칸에 얼마인지
   const n = (v => v && v.bathsAny !== undefined ? v.bathsAny : +E.baths || 0)((lineVars(R.S) || {}).s7), cs = ((D.cats || {}).s7 || []).filter(c => ["fixture", "ceiling", "acc", "shower", "set"].includes(c.key)); if (!n || !cs.length) return "";   // (v71) 칸 수 = 이 단계에서 공사하는 욕실(‘안 함’과 도면에서 뺀 칸은 세지 않는다)
   const ids = cs.flatMap(c => c.lines), tot = R.lines.filter(x => ids.includes(x.lid)).reduce((a, x) => a + x.amt, 0); if (!tot) return "";
@@ -3022,7 +3039,7 @@ function renderChecklist() {
   const nOn = others.filter(i => checked.has(i.name)).length;
   const custom = XA ? XA.rest : (R.all || R.lines).filter(l => l.extra && !l.it && !l.film && (l.at ? l.at === st.key : st.procs.includes(l.proc)) && !String(l.key).startsWith("xw"));   // 창호 목록에서 넣은 창은 위 표에서 고친다
   body.innerHTML = `<div class="sthead"><h2>${esc(st.label)}</h2><span class="note">하지 않는 공사는 체크를 끄면 됩니다.</span>${D.stepLines ? stepDelta(st) : ""}<b class="tabnum">${won(s.amt)}원</b></div>
-    ${D.stepLines ? planCard(st) : ""}${st.key === "s11" ? furnBar() : ""}${st.key === "s7" && D.stepLines && D.cats ? bathSum(st) : ""}
+    ${D.stepLines ? planCard(st) : ""}${st.key === "s11" ? furnBar() : ""}${st.key === "s7" && D.stepLines && D.cats ? bathModeNote() + bathSum(st) : ""}
     ${st.key === "s4" && D.cats ? workChooser(st) : ""}<div class="pgroup">${rows || '<p class="note" style="padding:0 14px">주요 공사가 없습니다.</p>'}</div>${st.key === "s4" && D._woodSet && D.cats ? woodTail() : ""}${st.key === "s10" && D.stepLines ? filmCard() : ""}
     <details class="more allmore" ${nOn ? "open" : ""}><summary><b>목록에 없는 품목 찾아 넣기</b> <span class="note">${others.length}개${nOn ? ` · ${nOn}개 체크됨` : " · 필요할 때만 펼치세요"}</span></summary><div class="pgroup"><h3>추가 품목 <span class="note">단가가 없어도 체크하면 견적서에 ‘별도 협의’로 들어갑니다</span></h3>
     ${groupsOf(others).map(([g, list]) => { const on = list.filter(i => checked.has(i.name)).length;
@@ -3161,7 +3178,6 @@ function renderConfirm(body, steps) {
     <p class="note" style="margin:4px 14px;color:var(--warn)">⚠ 상세견적서로 넘어가기 전에 아래 ‘견적 검수’와 공간별 공사를 한 번 더 확인해 주세요. 챗봇에 ‘뭐 안 했지?’라고 물어도 됩니다.</p>
     ${R.tbd.length ? `<p class="note down" style="margin:4px 14px">단가 미정 ${R.tbd.length}건은 견적서에 ‘별도 협의’로 표시됩니다: ${esc(R.tbd.map(l => l.name).join(", "))}</p>` : ""}
     ${checkCard(steps)}
-    ${marginCard() || '<div id="marginCard" hidden></div>'}
     ${D.stepLines ? planOverview() : ""}
     <div class="confirm">${list}</div>
     <div class="toolbar" style="padding:8px 14px 14px"><button type="button" class="btn primary" data-act="doc">상세견적서 보기</button><button type="button" class="btn" data-act="save">저장</button></div>`;
@@ -3245,16 +3261,15 @@ function renderInfo() {
     <label class="f">전용면적 ${+E.excl > 0 ? "(직접 입력)" : "(자동 계산)"}<span class="in"><input type="number" step="0.01" data-e="excl" class="${+E.excl > 0 ? "" : "auto"}" value="${+E.excl > 0 ? esc(E.excl) : S.exclM2}"><span class="u">㎡</span></span></label>
     <div class="f wide"><span>방</span>${seg("rooms", [1, 2, 3, 4, 5])}</div>
     <div class="f wide"><span>욕실</span>${seg("baths", [1, 2, 3])}</div>
-    ${bathModeCard({ tight: true })}
     <div class="f wide"><span>발코니</span>${seg("balconies", [0, 1, 2, 3])}</div>
     <div class="f wide"><span>드레스룸</span>${seg("dress", [0, 1])}</div>
-    <div class="f wide"><span>방 크기 <small class="note">가로 × 세로 · 비우면 자동</small></span>${roomDimBox(S)}</div>
-    <div class="f wide"><span>추가 공간 <small class="note">방 목록에 없는 곳</small></span>${xspBox(S)}</div>
     <label class="f">층<span class="in"><input type="number" min="1" data-e="level" value="${esc(E.level)}"><span class="u">층</span></span></label>
     <label class="f">기업이윤<span class="in"><input type="number" step="0.5" data-e="biz" value="${esc(E.biz)}"><span class="u">%</span></span></label>
   </div>
   <p class="note" style="margin:8px 0 0">공급 <b>${S.supplyM2}㎡</b> → 전용 <b>${S.exclM2}㎡ (${toPy(S.exclM2)}평)</b> ${+E.excl > 0 ? `(직접 입력한 값) <button type="button" class="btn ghost sm" data-exclauto>자동값으로</button>` : `(평형을 고르면 공급면적의 ${Math.round(D.layout.exclRatio * 100)}% 평균값으로 자동 계산 · 실제 전용면적을 알면 칸에 바로 고쳐 넣으세요)`}</p></div>
-  ${planBase()}${D.stepLines ? workPlanBox() : ""}</div>`;
+  ${planBase()}${D.stepLines ? workPlanBox() : ""}</div>
+  <div class="group"><h3>방 크기 <span class="note">가로 × 세로 (mm) · 비워 두면 평형에 맞춰 자동 · 위 도면에서 방을 눌러 넣어도 같습니다</span></h3>${roomDimBox(S)}</div>
+  <div class="group"><h3>추가 공간 <span class="note">보조 주방 · 다용도실처럼 방 목록에 없는 곳이 있을 때만</span></h3><div style="display:flex;flex-wrap:wrap">${xspBox(S)}</div></div>`;
   const i2 = $("#info2"); if (i2) i2.innerHTML = dimBox(S);
   planLibCheck();          // 실측 입력은 공사 유형 아래에 (필요할 때만 펼침)
 }
@@ -3291,22 +3306,21 @@ const isRoomRow = s => !!s && !s.xsp && (s.type === "거실" || s.type === "주�
 const roomOwn = s => { const m = (E.dim || {})[s.id] || {}; return (+m.w > 0 && +m.d > 0) || +m.a > 0 };
 function roomAutoWD(s) { const A = +s.A0 || 0; if (!(A > 0)) return null; const w = Math.sqrt(A * (ROOM_RATIO[s.type] || 1.2)); return [Math.round(w * 10) * 100, Math.round(A / w * 10) * 100] }   // mm (100 단위)
 function roomDimInfo(s) {
-  const m = (E.dim || {})[s.id] || {}, hw = +m.w > 0, hd = +m.d > 0, a0 = +s.A0 || 0, back = `<button type="button" class="btn ghost sm" data-roomauto="${s.id}">↺ 자동</button>`;
-  if (hw !== hd && !(+m.a > 0)) return `<b style="color:var(--warn)">가로·세로를 둘 다 넣어야 계산됩니다</b> <span class="note">(지금은 자동 ${s.A}㎡)</span> ${back}`;
-  if (roomOwn(s)) { const df = r1(s.A - a0); return `<span class="pill 엑셀">입력</span> <b>${s.A}㎡</b> (${toPy(s.A)}평) <span class="note">자동이면 ${a0}㎡${df ? ` · ${df > 0 ? "+" : "−"}${Math.abs(df)}㎡` : ""}</span> ${back}` }
-  return `<span class="pill">${s.fit ? "도면에 그린 크기" : "자동"}</span> ${s.A}㎡ (${toPy(s.A)}평)`;
+  const m = (E.dim || {})[s.id] || {}, hw = +m.w > 0, hd = +m.d > 0, a0 = +s.A0 || 0, back = `<button type="button" class="btn ghost sm" data-roomauto="${s.id}" title="평형 기준 자동값 ${a0}㎡로 되돌립니다">↺ 자동</button>`;
+  if (hw !== hd && !(+m.a > 0)) return `<b style="color:var(--warn)">가로·세로 둘 다 넣어 주세요</b> ${back}`;
+  if (roomOwn(s)) { const df = r1(s.A - a0); return `<b>${s.A}㎡</b> <span class="note">${toPy(s.A)}평${df ? ` · 자동보다 ${df > 0 ? "+" : "−"}${Math.abs(df)}` : ""}</span> <span class="pill 엑셀">입력</span> ${back}` }
+  return `<b>${s.A}㎡</b> <span class="note">${toPy(s.A)}평</span> <span class="pill">${s.fit ? "도면에 그린 크기" : "자동"}</span>`;
 }
 function roomSumTxt(S) {
   const rs = S.list.filter(isRoomRow), n = rs.filter(roomOwn).length, sum = r1(rs.reduce((a, s) => a + (s.A || 0), 0)), s0 = r1(rs.reduce((a, s) => a + (+s.A0 || 0), 0));
   return `거실·주방·방 바닥 합계 <b>${sum}㎡</b> (${toPy(sum)}평)` + (n ? ` · 직접 넣은 곳 ${n}곳 <span class="note">(모두 자동이면 ${s0}㎡)</span> <button type="button" class="btn ghost sm" data-roomauto="*">↺ 모두 자동으로</button>` : ` <span class="note">· ${+E.py || 0}평형에 맞춰 자동으로 나눈 값</span>`);
 }
 function roomDimBox(S) {
-  const dm = E.dim || {}, rows = S.list.filter(isRoomRow), row = "display:flex;flex-wrap:wrap;gap:6px;align-items:center";
-  const inp = (s, k, ph) => { const m = dm[s.id] || {}; return `<input class="q" type="number" min="0" step="10" inputmode="numeric" style="width:108px" data-dim="${s.id}|${k}" data-mm="1" value="${m[k] === undefined || m[k] === "" ? "" : Math.round(m[k] * 1000)}" placeholder="${ph}" aria-label="${esc(s.name)} ${k === "w" ? "가로" : "세로"} mm">` };
-  return `<div id="roomDimBox" style="flex:1 1 100%;min-width:0">
-    ${rows.map((s, i) => { const a = roomAutoWD(s) || ["", ""]; return `<div data-roomrow="${s.id}" style="${row};${i ? "margin-top:6px;padding-top:6px;border-top:1px dashed var(--line,#d8ddd6)" : ""}"><b style="min-width:104px">${esc(s.name)}</b>${inp(s, "w", "자동 " + a[0])}<span class="note">×</span>${inp(s, "d", "자동 " + a[1])}<span class="note">mm</span><span data-roomout style="flex:1 1 230px;min-width:0">${roomDimInfo(s)}</span></div>` }).join("")}
-    <div id="roomSum" style="margin-top:8px">${roomSumTxt(S)}</div>
-    <small class="note" style="display:block;margin-top:4px"><b>비워 두면 평형에 맞춰 자동으로 나눕니다</b>(가견적 · 칸의 흐린 숫자가 자동값). 방마다 잰 치수를 넣으면 그 방은 넣은 값으로 계산합니다. 몰딩·걸레받이·천장·바닥 목공처럼 길이·넓이로 세는 공사가 따라 바뀌고, <b>도배·장판·강마루는 각 단계의 ‘평수’ 칸</b>에서 정합니다. 욕실·현관·발코니 치수는 타일 줄 아래에서 넣습니다.</small></div>`;
+  const dm = E.dim || {}, rows = S.list.filter(isRoomRow);
+  const inp = (s, k, ph) => { const m = dm[s.id] || {}; return `<input class="q" type="number" min="0" step="10" inputmode="numeric" style="width:96px" data-dim="${s.id}|${k}" data-mm="1" value="${m[k] === undefined || m[k] === "" ? "" : Math.round(m[k] * 1000)}" placeholder="${ph}" aria-label="${esc(s.name)} ${k === "w" ? "가로" : "세로"} mm">` };
+  return `<div id="roomDimBox"><div class="roomgrid">${rows.map(s => { const a = roomAutoWD(s) || ["", ""]; return `<div class="rrow" data-roomrow="${s.id}"><b>${esc(s.name)}</b>${inp(s, "w", "자동 " + a[0])}<span class="note">×</span>${inp(s, "d", "자동 " + a[1])}<span data-roomout>${roomDimInfo(s)}</span></div>` }).join("")}</div>
+    <div id="roomSum" style="margin-top:10px">${roomSumTxt(S)}</div>
+    <small class="note" style="display:block;margin-top:4px"><b>비워 두면 평형에 맞춰 자동으로 나눕니다</b>(가견적 · 칸의 흐린 숫자가 자동값). 잰 치수를 넣은 방은 그 값으로 계산합니다. 몰딩·걸레받이·목공처럼 길이·넓이로 세는 공사가 따라 바뀌고, <b>도배·장판·강마루는 각 단계의 ‘평수’ 칸</b>에서 정합니다. 욕실·현관·발코니 치수는 타일 줄 아래에서 넣습니다.</small></div>`;
 }
 function roomDimSync() {                              // 치수 칸을 고친 뒤: 방 크기 칸의 오른쪽 글과 합계만 다시 적는다 (치던 칸은 그대로)
   document.querySelectorAll("[data-roomrow]").forEach(r => { const s = R.S.list.find(x => x.id === r.dataset.roomrow), o = r.querySelector("[data-roomout]"); if (s && o) o.innerHTML = roomDimInfo(s) });
@@ -3594,15 +3608,17 @@ function cmpSummary() {                              // 합계 칸: 비교견적
     + c.map(x => `<div class="srow sub"><span>${esc(aliasOf(x.from))} → ${esc(aliasOf(x.to))}</span><span>${x.diff > 0 ? "+" : "−"}${won(Math.abs(x.diff))}</span></div>`).join("") + "</div>";
 }
 function renderSummary() {
-  const tgt = D.settings.targetMargin ?? 0.2, m = R.margin;
-  $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span><span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
-   ${PROCS.filter(p => R.byProc[p]).map(p => `<div class="srow sub"><span>${PROC_LABEL[p]}${isAdmin ? ` <span class="cost">${pct((R.byProc[p].amt - R.byProc[p].cost) / (R.byProc[p].amt || 1))}</span>` : ""}</span><span>${won(R.byProc[p].amt)}</span></div>`).join("")}
+  const tgt = D.settings.targetMargin ?? 0.2, m = R.margin, mgc = mgCan(), mgs = mgc && !mgHidden();   // (v88) mgs = 공정마다 마진을 같이 보여 준다
+  $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span>${mgc ? `<button type="button" class="btn ghost sm" data-mghide title="고객과 화면을 같이 볼 때 마진을 감춥니다 (이 기기에 기억)">${mgs ? "마진 가리기" : "마진 보기"}</button>` : ""}<span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
+   ${mgs ? '<div class="srow sub mgh"><span></span><span class="mgi">마진 %</span><span class="pa">금액</span></div>' : ""}
+   ${PROCS.filter(p => R.byProc[p]).map(p => `<div class="srow sub${mgs ? " mg" : ""}"><span>${PROC_LABEL[p]}</span>${mgs ? mgRow(p) : ""}<span class="pa">${won(R.byProc[p].amt)}</span></div>`).join("")}
    <div class="srow" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px"><span>공사원가</span><b>${won(R.sum)}</b></div>
    <div class="srow"><span>기업이윤${isAdmin ? ` <span class="cost">${+E.biz || 0}%</span>` : ""}</span><span>${won(R.biz)}</span></div>
    <div class="srow sub"><span>절사</span><span>${won(R.cut)}</span></div>
    <div class="srow"><span>공사비 합계 (VAT 별도)</span><b>${won(R.net)}</b></div>
    <div class="srow sub"><span>부가세 10%</span><span>${won(R.vat)}</span></div>
    <div class="srow total"><span>총 합계</span><span>${won(R.total)}원</span></div>
+   ${mgs ? mgTotal() : mgNote()}
    ${(bd => bd._ok && Math.abs(R.sum - bd._sum) >= 1 ? `<div class="note" style="text-align:right;margin-top:4px">수량·종류를 고쳐서 ${dltChip(R.sum - bd._sum, "자동 계산보다")} <small>(공사원가 기준)</small></div>` : "")(D.stepLines ? baseAmts() : {})}
    ${cmpSummary()}
    <div class="note" style="text-align:right">평당 ${won(R.net / (+E.py || 1))}원 · ㎡당 ${won(R.net / (R.S.supplyM2 || 1))}원 (VAT 별도)</div>
@@ -3622,7 +3638,7 @@ document.addEventListener("click", ev0 => {
   const b = ev0.target.closest("[data-act]"); if (!b) return; const a = b.dataset.act;
   if (SENT_HOW[a]) srvSent(SENT_HOW[a]);
   if (a === "reprice") { if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "한 번 더 누르면 금액이 바뀝니다"; return } delete E.fp; delete E.fpVer; refresh(); toast("현재 단가표로 다시 계산했습니다.") }
-  if (a === "save") { snapshotPrices(); save(); const L = store.get("sido3_list", []).filter(x => x.id !== E.id), prevAt = E.savedAt || ""; E.savedAt = new Date().toISOString(); E.total = R.total; delete E.draft; L.unshift(deep(E)); store.set("sido3_list", L) ? toast("저장했습니다.") : toast("이 브라우저에는 저장할 수 없습니다. 견적 파일로 내보내세요."); estBarUp();
+  if (a === "save") { snapshotPrices(); save(); const L = store.get("sido3_list", []).filter(x => x.id !== E.id), prevAt = E.savedAt || ""; E.savedAt = new Date().toISOString(); E.total = R.total; mgSnap(); delete E.draft; L.unshift(deep(E)); store.set("sido3_list", L) ? toast("저장했습니다.") : toast("이 브라우저에는 저장할 수 없습니다. 견적 파일로 내보내세요."); estBarUp();
     const fc = !!(SRV && SRV.force && SRV.force.id === E.id && Date.now() < SRV.force.until); if (SRV) SRV.force = null;   // 방금 ‘더 새 내용이 있다’는 안내를 보고 한 번 더 누른 것이면 덮어쓴다
     srvSave(fc, prevAt).then(ok => { if (ok && ok.clash) { SRV.force = { id: E.id, until: Date.now() + 20000 }; toast(`이 기기에는 저장했습니다. 그런데 회사 저장소에는 ${whoSay(ok.who)} ${fmtAt(ok.at)}에 저장한 더 새 내용이 있어 아직 올리지 않았습니다. 화면 위 ‘회사 저장소에 더 새 내용’을 눌러 확인하세요. 내 내용으로 덮어쓰려면 20초 안에 ‘저장’을 한 번 더 누르세요.`) }
       else if (ok) toast(fc ? "내 내용으로 회사 저장소를 덮어썼습니다." : "저장했습니다. 회사 저장소에도 올렸습니다."); else if (SRV && SRV.token && (ok === false || ok === null)) toast("이 기기에 저장했습니다. 회사 컴퓨터에 연결되면 저절로 회사 저장소에 올라갑니다."); else if (ok === false) toast("이 기기에는 저장했지만 회사 저장소에는 올리지 못했습니다. 연결을 확인하세요.") }) }
@@ -3839,6 +3855,21 @@ document.head.insertAdjacentHTML("beforeend", `<style>
 .plantop{position:sticky;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:6;background:var(--panel);border-bottom:2px solid var(--line);border-top:0!important;box-shadow:0 6px 10px -8px rgba(0,0,0,.35)}.plantop .bd{padding-top:0}.planside{max-height:46vh;overflow:auto}
 .howto{font-size:12px;background:var(--soft);border-radius:8px;padding:6px 10px;margin-bottom:8px}.howto ol{margin:2px 0 0;padding-left:18px}
 .inforow{display:grid;grid-template-columns:minmax(250px,330px) minmax(0,1fr);gap:18px;align-items:start}@media (max-width:1000px){.inforow{grid-template-columns:minmax(0,1fr)}}
+.srow.mg{align-items:center}.srow.mg>span:first-child,.srow.mgh>span:first-child{flex:1 1 auto;min-width:0}
+.srow .pa{min-width:78px;text-align:right}
+.mgi{display:inline-flex;align-items:center;gap:2px;font-size:12px;color:var(--muted);white-space:nowrap}
+.srow.mgh{font-size:11px;padding-bottom:0}.srow.mgh .mgi{width:64px;justify-content:flex-end}
+.mgi input{width:48px;padding:1px 4px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:12px;text-align:right;background:transparent;color:var(--ink);-moz-appearance:textfield}
+.mgi input::-webkit-outer-spin-button,.mgi input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.mgi input::placeholder{color:var(--muted);opacity:.8}
+.mgi.ov input{border-color:var(--accent);background:rgba(46,107,87,.12);font-weight:700}
+.mgi button{border:0;background:none;cursor:pointer;color:var(--accent);padding:0 1px;font-size:13px;line-height:1}
+.mgall{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;color:var(--muted)}.mgall input{width:58px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:12px;text-align:right;background:var(--surface,#fff);color:var(--ink)}
+.mgbox{margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(46,107,87,.07);border:1px solid rgba(46,107,87,.22)}
+.roomgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:8px 16px}
+.roomgrid .rrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--line);border-radius:10px}
+.roomgrid .rrow>b{min-width:88px}
+.roomgrid .rrow [data-roomout]{flex:1 1 150px;min-width:0;text-align:right}
 .fields.f4{grid-template-columns:repeat(4,minmax(0,1fr))}.fields.f4 .wide{grid-column:span 2}@media (max-width:900px){.fields.f4{grid-template-columns:1fr 1fr}.fields.f4 .wide{grid-column:1/-1}}
 .stepfoot{position:sticky;bottom:0;background:var(--panel);z-index:5;border-radius:0 0 12px 12px}
 .pinbar{margin-top:8px;font-size:13px}.pinbar .layers button{opacity:1!important}.pinbar .layers{margin-top:6px}
@@ -4159,7 +4190,7 @@ const lineDraft = () => LINE_DRAFT && LINE_DRAFT.src === (E.planImg || "") && LI
 const freeDraw = () => BASE_MODE === "line" && LINE_DRAFT && LINE_DRAFT.src === (E.planImg || "") && LINE_DRAFT.close || null;          // 직접 그리는 중인 모양의 이름·메모 (‘위치·가구 표시’에서 ‘직접 그리기’를 골라 넘어온 상태)
 function posBar(md) {                                // (v62) 현장 정보 도면 아래 ‘위치·가구 표시’와 ‘선 표시’: 싱크대·붙박이장·분전함의 자리와 모양, 배관·가벽·전선이 지나는 길을 도면에 남긴다 (수량·금액과는 상관없다)
   const ms = planMarks().filter(m => m.step === POS), dr = lineDraft(), cl = freeDraw(), np = dr ? dr.pts.length : 0, sel = md === "pos" && ms.find(m => m.shape && m.id === SH_SEL), onSt = "background:var(--accent);color:var(--accent-ink);border-color:var(--accent)";
-  const how = md === "line" ? (cl ? `<b>‘${esc(cl.t)}’ 모양 직접 그리기:</b> 도면에서 그 모양의 모서리를 <b>차례로 누르세요.</b> 처음 찍은 점을 다시 누르면 모양이 닫힙니다.` : "<b>선 표시:</b> 배관·가벽·전선이 지나는 길을 긋습니다. 시작점에서 끝점까지 <b>끌거나</b>, 꺾이는 곳마다 <b>차례로 누른 뒤</b> 끝점을 한 번 더 누르세요. <b>방 모양을 그리려면</b> 모서리를 차례로 누른 뒤 <b>처음 찍은 점(큰 동그라미)을 다시 누르면</b> 모양이 닫히고, 그 모양이 <b>어느 방인지 고르는 창</b>이 뜹니다. 그어 둔 선은 <b>끝점을 끌어</b> 고치고, <b>선을 누르면</b> 이름을 바꾸거나 지웁니다.")
+  const how = md === "line" ? (cl ? `<b>‘${esc(cl.t)}’ 모양 직접 그리기:</b> 도면에서 그 모양의 모서리를 <b>차례로 누르세요.</b> 처음 찍은 점을 다시 누르면 모양이 닫힙니다.` : "<b>선 표시:</b> 배관·가벽·전선이 지나는 길을 긋습니다 (표시만 남고 방 크기·금액은 바뀌지 않습니다 — <b>방 크기는 ‘" + (E.planImg ? "벽 치수 넣기" : "방 크기 바꾸기") + "’를 누른 뒤 도면에서 방을 눌러</b> 바꿉니다). 시작점에서 끝점까지 <b>끌거나</b>, 꺾이는 곳마다 <b>차례로 누른 뒤</b> 끝점을 한 번 더 누르세요. <b>방 모양을 그리려면</b> 모서리를 차례로 누른 뒤 <b>처음 찍은 점(큰 동그라미)을 다시 누르면</b> 모양이 닫히고, 그 모양이 <b>어느 방인지 고르는 창</b>이 뜹니다. 그어 둔 선은 <b>끝점을 끌어</b> 고치고, <b>선을 누르면</b> 이름을 바꾸거나 지웁니다.")
     : "<b>위치·가구 표시:</b> 도면에서 <b>그 자리를 누르면</b> 작은 창이 뜹니다. 분전함·콘센트는 이름만 누르면 점으로 찍히고, 싱크대·붙박이장은 <b>모양(일자·ㄱ자·ㄷ자…)</b>을 고르면 그 크기로 놓입니다. 놓은 것은 <b>끌어서 옮기고</b>, 모양은 한 번 눌러 고른 뒤 <b>모서리 동그라미</b>로 크기를 맞춥니다.";
   return `<div class="pinbar"><span class="note">${how} <b>수량·금액은 바뀌지 않습니다.</b> ${E.posDoc ? "지금은 고객 견적서의 ‘위치 메모’ 도면에도 나옵니다." : "고객 견적서에는 나오지 않습니다."} 잘못 눌렀으면 <b>Ctrl+Z</b>.</span>
     ${md === "line" && (dr || cl) ? `<div class="layers">${np ? `<button type="button" data-linedone style="${np > (cl ? 2 : 1) ? onSt : "opacity:.5!important"}">${cl ? "모양 닫기" : "선 끝내기"} (Enter)</button><button type="button" data-lineback>방금 찍은 점 지우기</button>` : ""}<button type="button" data-linecancel style="color:var(--warn)">그리기 취소 (Esc)</button><span class="note" style="align-self:center">점 ${np}개${cl && np < 3 ? " · 3개부터 모양이 됩니다" : !cl && np < 2 ? " · 끝점을 누르세요" : !cl && np > 2 ? " · 처음 점(큰 동그라미)을 누르면 방 모양으로 닫힙니다" : ""}</span></div>` : ""}
@@ -4170,9 +4201,9 @@ function posBar(md) {                                // (v62) 현장 정보 도�
 function baseBar() {                                 // 현장 정보 도면 아래 한 줄: 벽 치수 넣기 / (올린 도면이면) 방 영역 고치기 — 네모·점·둥근 모양 / 위치·가구 표시 / 선 표시. 지금 하는 것 하나만 진하게
   const md = baseMode(), n = Object.keys(E.wallLen || {}).length, on = 'style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent)"', ps = planMarks().filter(m => m.step === POS), nLn = ps.filter(m => m.line).length, nPos = ps.length - nLn;
   const fd = freeDraw(), bt = (m, lb, tool) => { const a = fd ? m === "pos" : md === m && (!tool || ZONE_TOOL === tool); return `<button type="button" data-basemode="${m}"${tool ? ` data-ztool="${tool}"` : ""} aria-pressed="${a}" ${a ? on : ""}>${lb}</button>` };
-  return `<div class="layers bmode" style="margin-top:8px">${bt("dim", "벽 치수 넣기")}${E.planImg ? `<span class="note" style="align-self:center;margin-left:4px">방 영역 고치기</span>${bt("zone", "네모 그리기", "rect")}${bt("zone", "점 찍어 그리기", "poly")}${bt("zone", "둥근 모양", "round")}<span class="note" style="align-self:center;margin-left:4px">표시</span>` : ""}${bt("pos", `위치·가구 표시${nPos ? ` · ${nPos}곳` : ""}`)}${bt("line", `선 표시${nLn ? ` · ${nLn}줄` : ""}`)}</div>
+  return `<div class="layers bmode" style="margin-top:8px">${bt("dim", E.planImg ? "벽 치수 넣기" : "방 크기 바꾸기")}${E.planImg ? `<span class="note" style="align-self:center;margin-left:4px">방 영역 고치기</span>${bt("zone", "네모 그리기", "rect")}${bt("zone", "점 찍어 그리기", "poly")}${bt("zone", "둥근 모양", "round")}<span class="note" style="align-self:center;margin-left:4px">표시</span>` : ""}${bt("pos", `위치·가구 표시${nPos ? ` · ${nPos}곳` : ""}`)}${bt("line", `선 표시${nLn ? ` · ${nLn}줄` : ""}`)}</div>
     ${md !== "zone" && E.planFit ? fitBar() : ""}
-    ${md === "zone" ? pinBar() : md === "pos" || md === "line" ? posBar(md) : `<div class="pinbar"><b>벽 실측 치수</b> <span class="note"><b>벽을 누르면</b> 그 벽 길이(mm)를 넣습니다. <b>방 가운데를 누르면</b> 가로·세로를 한 번에 넣습니다. 넣은 치수로 그 방의 바닥·벽·둘레가 실측값이 되어 <b>바닥·도배·몰딩·걸레받이 등의 수량과 금액이 자동으로</b> 바뀝니다. 한쪽 벽만 넣어도 나머지는 도면 비율로 계산합니다. 치수는 고객 견적서에 나오지 않습니다.${n ? ` · 지금 ${n}면 입력됨` : ""}</span>
+    ${md === "zone" ? pinBar() : md === "pos" || md === "line" ? posBar(md) : `<div class="pinbar"><b>${E.planImg ? "벽 실측 치수" : "방 크기 바꾸기"}</b> <span class="note">${E.planImg ? "<b>도면에서 방 가운데를 누르면</b> 그 방의 가로·세로(mm)를 넣는 창이 뜹니다. <b>벽을 누르면</b> 그 벽 길이만 넣습니다." : "<b>도면에서 방을 누르면</b> 그 방의 가로·세로(mm)를 넣는 창이 뜹니다 (아래 ‘방 크기’ 칸과 같은 값입니다)."} 넣은 치수로 그 방의 바닥·벽·둘레가 실측값이 되어 <b>바닥·도배·몰딩·걸레받이 등의 수량과 금액이 자동으로</b> 바뀝니다. 한쪽 벽만 넣어도 나머지는 도면 비율로 계산합니다. 치수는 고객 견적서에 나오지 않습니다.${n ? ` · 지금 ${n}면 입력됨` : ""}</span>
       <div class="layers"><span class="note" style="align-self:center">도면 글자</span><button type="button" data-mscale="-1">작게</button><button type="button" data-mscale="1">크게</button>${n ? '<button type="button" data-lenclear style="color:var(--warn)">벽 치수 모두 지우기</button>' : ""}</div></div>`}`;
 }
 function applyWallLens(id) {                         // 벽 치수 → 그 방의 실측표(E.dim). 네모 하나면 가로×세로, ㄱ자 방이면 면적+둘레
@@ -4191,17 +4222,24 @@ function applyWallLens(id) {                         // 벽 치수 → 그 방�
 let LEN_DRAFT = null;
 const closeLenPop = () => { const p = document.getElementById("lenPop"); if (p) p.remove(); LEN_DRAFT = null };
 function openLenPop(r, side, cx, cy) {
-  closeLenPop(); closeMarkPop(); LEN_DRAFT = { r, side }; const wl = E.wallLen || {}, v = sd => wl[r.k + "|" + sd] ?? "", nm = r.s.name.replace(/ \(.*\)/, "");
+  closeLenPop(); closeMarkPop(); LEN_DRAFT = { r, side }; const wl = E.wallLen || {}, v = sd => wl[r.k + "|" + sd] ?? "", nm = r.s.name.replace(/ \(.*\)/, ""), bd = E.planImg ? null : ((E.dim || {})[r.s.id] || {});   // bd = 기본 도면이면 그 방에 넣어 둔 가로·세로
   const left = Math.max(8, Math.min(cx + 14, innerWidth - 316)), top = Math.max(8, Math.min(cy + 14, innerHeight - 230)), inp = (id, ph, val) => `<input id="${id}" type="number" min="0" step="10" inputmode="numeric" placeholder="${ph}" value="${esc(val)}" style="width:120px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit">`;
   document.body.insertAdjacentHTML("beforeend", `<div id="lenPop" class="card" style="position:fixed;left:${left}px;top:${top}px;z-index:80;width:300px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.3)">
     <div style="font-weight:700;margin-bottom:6px">${esc(nm)} ${side ? SIDE_NAME[side] + " 길이" : r.poly ? "가장 넓은 곳의 가로 × 세로" : "가로 × 세로"} <span class="note">mm</span></div>
-    ${side ? inp("lpA", "예: 3400", v(side)) : `<div style="display:flex;gap:6px;align-items:center">${inp("lpA", "가로 3400", v("N") || v("S"))}<span>×</span>${inp("lpB", "세로 4200", v("W") || v("E"))}</div>`}
+    ${side ? inp("lpA", "예: 3400", v(side)) : `<div style="display:flex;gap:6px;align-items:center">${inp("lpA", "가로 3400", bd ? (bd.w ? Math.round(bd.w * 1000) : "") : v("N") || v("S"))}<span>×</span>${inp("lpB", "세로 4200", bd ? (bd.d ? Math.round(bd.d * 1000) : "") : v("W") || v("E"))}</div>`}
     <div class="note" style="margin-top:6px">비우고 저장하면 그 치수를 지웁니다.</div>
     <div class="toolbar" style="margin-top:8px"><button type="button" class="btn primary sm" data-lpsave>저장 (Enter)</button><button type="button" class="btn sm" data-lpcancel>취소</button></div></div>`);
   $("#lpA").focus(); $("#lpA").select();
 }
 function lenPopSave() {
-  const d = LEN_DRAFT; if (!d) return; E.wallLen = E.wallLen || {}; const put = (sd, val) => { const k = d.r.k + "|" + sd; if (+val > 0) E.wallLen[k] = +val; else delete E.wallLen[k] };
+  const d = LEN_DRAFT; if (!d) return;
+  if (!E.planImg && !d.side) {                          // (v88) 기본 도면: 넣은 가로 × 세로가 그대로 그 방의 크기다 (‘방 크기’ 칸과 같은 값 E.dim[id].w/d)
+    const a = +$("#lpA").value || 0, b2 = +$("#lpB").value || 0, id = d.r.s.id, nm = d.r.s.name.replace(/ \(.*\)/, "");
+    if ((a > 0) !== (b2 > 0)) { toast("가로와 세로를 둘 다 넣어 주세요. (둘 다 비우면 자동으로 돌아갑니다)"); return }
+    E.dim = E.dim || {}; const m = E.dim[id] = E.dim[id] || {}; for (const k of Object.keys(E.wallLen || {})) if (k.split("|")[0].split("#")[0] === id) delete E.wallLen[k];
+    for (const f of ["w", "d", "a", "p"]) delete m[f]; if (a > 0) { m.w = a / 1000; m.d = b2 / 1000 } if (!Object.keys(m).length) delete E.dim[id];
+    closeLenPop(); refresh(true); const s = R.S.list.find(x => x.id === id); toast(a > 0 ? `${nm}: ${a} × ${b2}mm = ${s ? s.A : ""}㎡ 로 계산합니다. 관련 공정 수량이 바뀌었습니다. (Ctrl+Z 되돌리기)` : `${nm}: 평형 기준 자동 크기로 되돌렸습니다.`); return }
+  E.wallLen = E.wallLen || {}; const put = (sd, val) => { const k = d.r.k + "|" + sd; if (+val > 0) E.wallLen[k] = +val; else delete E.wallLen[k] };
   if (d.side) put(d.side, $("#lpA").value); else { put("N", $("#lpA").value); delete E.wallLen[d.r.k + "|S"]; put("W", $("#lpB").value); delete E.wallLen[d.r.k + "|E"] }
   const id = d.r.s.id; closeLenPop(); applyWallLens(id); E.dimOpen = true; refresh(true);
   const s = R.S.list.find(x => x.id === id); toast(s && s.measured ? `${s.name.replace(/ \(.*\)/, "")}: 바닥 ${s.A}㎡ · 둘레 ${s.P}m 로 계산합니다. 관련 공정 수량이 바뀌었습니다.` : "치수를 지웠습니다.");
@@ -4220,7 +4258,7 @@ document.addEventListener("click", ev0 => {
   const r = rectAt(g, px, py);
   if (!r) { toast("방 안쪽이나 벽 가까이를 눌러 주세요."); return }
   const w = r.w * PK, h = r.h * PK, rx = (px - PPAD - r.x * PK) / w, ry = (py - PPAD - r.y * PK) / h, edge = Math.min(0.9 * PK * (g.L.k || 1), 0.28 * Math.min(w, h)), d = { N: ry * h, S: (1 - ry) * h, W: rx * w, E: (1 - rx) * w }, near = Object.keys(d).sort((p, q) => d[p] - d[q])[0];
-  openLenPop(r, !r.poly && d[near] < edge && !(r.inner || {})[near] ? near : "", ev0.clientX, ev0.clientY);   // 점으로 그린 방은 벽 한 면이 여러 토막일 수 있어 늘 ‘가장 넓은 곳의 가로 × 세로’로 받는다
+  openLenPop(r, E.planImg && !r.poly && d[near] < edge && !(r.inner || {})[near] ? near : "", ev0.clientX, ev0.clientY);   // (v88) 기본 도면(그림 없음)에서는 어디를 눌러도 그 방의 가로 × 세로를 받는다   // 점으로 그린 방은 벽 한 면이 여러 토막일 수 있어 늘 ‘가장 넓은 곳의 가로 × 세로’로 받는다
 });
 document.addEventListener("keydown", ev0 => { if (!LEN_DRAFT) return; if (ev0.key === "Enter" && (ev0.target.id === "lpA" || ev0.target.id === "lpB")) { ev0.preventDefault(); lenPopSave() } else if (ev0.key === "Escape") closeLenPop() });                                  // 지금 위치를 지정할 공간
 const hasPins = () => !!E.planImg && (hasBox() || Object.keys(E.planPins || {}).length > 0);
@@ -5723,7 +5761,7 @@ function renderSrv() {                               // ‘저장된 견적’ �
   for (const s of stf) if (s.active !== false) grp(s.id, s.name);
   for (const x of L) grp(x.owner, x.owner === "admin" ? "관리자" : x.staffName || x.owner).rows.push(x);
   const groups = [...G.values()].sort((a, b) => (a.id === "admin") - (b.id === "admin") || String(a.name).localeCompare(String(b.name), "ko")), who = SRV.listWho && G.has(SRV.listWho) ? SRV.listWho : "";
-  const row = x => `<li data-own="${esc(x.owner)}" data-q="${esc([x.client, x.site, x.region, x.manager, x.staffName].filter(Boolean).join(" ").toLowerCase())}"><b>${esc(x.client || "(고객명 없음)")}</b><span class="note">${esc(x.site || "")}</span><span class="chip admin">${esc(x.owner === "admin" ? "관리자" : x.staffName)}</span>${x.draft ? '<span class="chip warn" title="‘저장’이 아니라 ‘임시저장’으로 올라온 견적입니다(쓰는 중)">임시저장</span>' : ""}<span class="chip">${esc(x.kind)} v${esc(x.ver)}</span><span class="chip">${won(x.total || 0)}원</span><span class="note">${esc(fmtAt(x.savedAt))}</span>${x.savedBy && x.savedBy !== x.staffName ? `<span class="chip" title="마지막으로 저장한 사람">${esc(x.savedBy)} 저장</span>` : ""}${moved(x) ? '<span class="chip warn" title="이 기기에서 마지막으로 열거나 저장한 뒤에 다른 곳(실장 또는 다른 기기)에서 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · ‘열기’로 최신</span>' : ""}<span class="spacer"></span>
+  const row = x => `<li data-own="${esc(x.owner)}" data-q="${esc([x.client, x.site, x.region, x.manager, x.staffName].filter(Boolean).join(" ").toLowerCase())}"><b>${esc(x.client || "(고객명 없음)")}</b><span class="note">${esc(x.site || "")}</span><span class="chip admin">${esc(x.owner === "admin" ? "관리자" : x.staffName)}</span>${x.draft ? '<span class="chip warn" title="‘저장’이 아니라 ‘임시저장’으로 올라온 견적입니다(쓰는 중)">임시저장</span>' : ""}<span class="chip">${esc(x.kind)} v${esc(x.ver)}</span><span class="chip">${won(x.total || 0)}원</span>${x.mg && x.mg.net ? `<span class="chip" title="저장할 때의 마진 (기업이윤 포함) · 실공사비 ${won(x.mg.cost)}원${x.mg.ov ? " · 실장이 공정 " + x.mg.ov + "곳의 마진을 고침" : ""}">마진 ${mgPct(x.mg.m)}%${x.mg.ov ? " ✎" : ""}</span>` : ""}<span class="note">${esc(fmtAt(x.savedAt))}</span>${x.savedBy && x.savedBy !== x.staffName ? `<span class="chip" title="마지막으로 저장한 사람">${esc(x.savedBy)} 저장</span>` : ""}${moved(x) ? '<span class="chip warn" title="이 기기에서 마지막으로 열거나 저장한 뒤에 다른 곳(실장 또는 다른 기기)에서 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · ‘열기’로 최신</span>' : ""}<span class="spacer"></span>
       <button class="btn sm" data-srvopen="${esc(x.owner)}|${esc(x.id)}">열기</button><button class="btn sm danger" data-srvdel="${esc(x.owner)}|${esc(x.id)}" title="지우면 아래 ‘지운 견적’으로 옮겨집니다 (되살릴 수 있습니다)">삭제</button></li>`;
   const head = g => { const dr = g.rows.filter(x => x.draft).length; return `<li data-grp="${esc(g.id)}" style="background:rgba(127,127,127,.14);border-radius:8px;margin-top:6px"><b>${esc(g.name)}</b>${lgOf[g.id] ? `<span class="note">아이디 ${esc(lgOf[g.id])}</span>` : ""}<span class="chip">견적 ${g.rows.length}건</span>${dr ? `<span class="chip warn">임시저장 ${dr}건</span>` : ""}<span class="note">${g.rows.length ? "마지막 저장 " + esc(fmtAt(g.rows[0].savedAt)) : "아직 저장한 견적이 없습니다"}</span></li>` };
   box.innerHTML = `<h3 style="font-size:14px;margin:0 0 6px">회사 저장소 <span class="note">전체 실장 견적 ${L.length}건 · 실장별로 나눠 보여 줍니다</span></h3>
@@ -5884,7 +5922,7 @@ document.addEventListener("click", async ev0 => {
 /* ---------- 새 견적 · 임시저장 ---------- */
 function fmtAt(s) { const d = new Date(s || ""); if (isNaN(d)) return String(s || "").slice(0, 16).replace("T", " "); const z = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}` }
 function estSig(x, loose) {                           // 견적 내용을 견주는 글자열. 화면 상태·저장 시각은 빼고, 빈 값은 없는 것으로 본다. loose = 빈 견적과 견줄 때(번호·날짜·담당자 무시)
-  const SKIP = { step: 1, savedAt: 1, savedBy: 1, total: 1, draft: 1, planOpen: 1, planView: 1, space: 1, dataVer: 1, dfv: 1 };
+  const SKIP = { step: 1, savedAt: 1, savedBy: 1, total: 1, mg: 1, draft: 1, planOpen: 1, planView: 1, space: 1, dataVer: 1, dfv: 1 };   // mg = 저장할 때 적는 마진 요약(합계처럼 계산해서 나오는 값)
   const norm = v => { if (Array.isArray(v)) return v.map(norm); if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const c = norm(v[k]); if (c == null || c === "" || (typeof c === "object" && !Object.keys(c).length)) continue; o[k] = c } return o } return v };
   const c = {}; for (const k of Object.keys(x)) if (!SKIP[k] && !(loose && k === "id")) c[k] = x[k];
   if (c.pk) c.pk = Object.fromEntries(Object.entries(c.pk).filter(([, y]) => y && (y.on || y.g || (y.v !== undefined && y.v !== ""))));   // 눌러 본 적 없는 묶음은 뺀다
@@ -5894,7 +5932,7 @@ function estSig(x, loose) {                           // 견적 내용을 견주
 function blankSig() { const keep = E; try { E = blankEst(); if (D.stepLines) applyPreset2(0); else applyPreset(0); applyPackages(); return estSig(E, true) } finally { E = keep } }
 const estHas = () => estSig(E, true) !== blankSig();  // 쓰던 내용이 있는지 (빈 견적과 다르면 있는 것)
 function stashEst(draft) {                            // 지금 견적을 ‘저장된 견적’ 목록에 넣는다. draft = 임시저장 (단가를 고정하지 않고, 열면 쓰던 단계에서 이어 쓴다)
-  const L = store.get("sido3_list", []).filter(x => x.id !== E.id), prevAt = E.savedAt || ""; E.savedAt = new Date().toISOString(); E.total = R.total; if (draft) E.draft = true; else delete E.draft; L.unshift(deep(E)); const ok = store.set("sido3_list", L);
+  const L = store.get("sido3_list", []).filter(x => x.id !== E.id), prevAt = E.savedAt || ""; E.savedAt = new Date().toISOString(); E.total = R.total; mgSnap(); if (draft) E.draft = true; else delete E.draft; L.unshift(deep(E)); const ok = store.set("sido3_list", L);
   stashEst.up = draft && SRV && (SRV.me || SRV.token) ? srvSave(false, prevAt, E) : null;   // (v64) 실장 화면은 연결이 끊겨 있어도 부른다 — 올릴 것으로 적어 두었다가 다시 연결되면 올린다   // (v61) 임시저장도 회사 저장소에 올린다 — 실장이 쓰던 내용이 그 기기에만 남지 않게. 다른 곳에서 고친 더 새 내용이 있으면 올리지 않는다(덮어쓰지 않는다)
   return ok }
 function keepCur(nextId) {                            // 다른 견적으로 넘어가기 전에 쓰던 견적을 남긴다. "" = 남길 것 없음 · 글 = 남긴 뒤의 안내 · false = 저장하지 못함
