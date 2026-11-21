@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>시도디자인 실장 견적</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="app.css?v=b962f9fd8c">
+<link rel="stylesheet" href="app2.css?v=68acc10532">
+</head>
+<body>
+<header class="top">
+  <div class="wrap topin">
+    <div class="brand">시도디자인 <small id="modeLabel">실장 견적</small></div>
+    <nav class="tabs" role="tablist" aria-label="화면">
+      <button role="tab" data-view="check" aria-selected="true">① 견적 입력</button>
+      <button role="tab" data-view="doc" aria-selected="false">② 상세견적서</button>
+      <button role="tab" data-view="est" aria-selected="false">공간별 세부 수정</button>
+      <button role="tab" data-view="saved" aria-selected="false">저장된 견적</button>
+      <button role="tab" data-view="prices" aria-selected="false" class="adm" hidden>단가·원가</button>
+      <button role="tab" data-view="settings" aria-selected="false" class="adm" hidden>마진·설정</button>
+      <button role="tab" data-view="rules" aria-selected="false" class="adm" hidden>옵션·수량 규칙</button>
+      <button role="tab" data-view="analysis" aria-selected="false" class="adm" hidden>현장 분석</button>
+    </nav>
+    <div class="spacer"></div>
+    <span class="chip adm admin" hidden>관리자 · 원가 표시 중</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="view" id="view-check">
+    <div class="est3 wiz">
+      <nav class="card stepnav" id="steps" aria-label="공정 단계"></nav>
+      <div class="card" style="min-width:0">
+        <div id="stepBody"></div>
+        <div class="stepfoot"><button type="button" class="btn" data-step="prev">← 이전</button><span class="spacer"></span><span class="note" id="stepPos"></span><span class="spacer"></span><button type="button" class="btn primary" data-step="next">다음 →</button></div>
+      </div>
+      <div class="sumslot"><aside class="card summary" id="summary"></aside></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-est" hidden>
+    <div class="est3 two">
+      <div class="card" style="min-width:0"><div class="bd note">체크리스트로 정한 내용을 공간별로 더 고칠 때만 쓰는 화면입니다. 체크리스트를 다시 바꾸면 같은 항목은 체크리스트 기준으로 다시 맞춰집니다.</div><div id="spaceTabs" role="group" aria-label="공간 선택"></div><div id="spacePanel"></div></div>
+      <div class="sumslot"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-doc" hidden>
+    <div class="docbar">
+      <button class="btn primary" data-act="print">인쇄 · PDF 저장</button>
+      <button class="btn" data-act="copy">엑셀용 복사</button>
+      <button class="btn" data-act="export">견적 파일 내보내기</button>
+      <button class="btn" data-act="nextver">버전 올리기 (변경 견적)</button><button class="btn" data-act="docedit">견적서에서 수정</button><button class="btn" data-act="save">저장</button>
+      <span class="note">인터넷 주소로 연 화면에서는 저장 확인 창이 뜨고, 인쇄는 인쇄용 파일을 받아 연 뒤 PDF로 저장합니다.</span>
+    </div>
+    <div class="card" style="max-width:900px;margin:0 auto 14px"><div class="bd"><label class="f">견적서 메모 (특기사항에 표시)<textarea id="memo" rows="2" placeholder="예: 거실 아트월 존치 / 195바 이상 문틀은 틀 1개당 3만 원 추가"></textarea></label></div></div>
+    <div id="docView"></div>
+  </section>
+
+  <section class="view" id="view-saved" hidden>
+    <div class="card"><div class="hd"><h2>저장된 견적</h2><span class="spacer"></span>
+      <label class="btn sm" style="cursor:pointer">견적 파일 열기 (.json)<input type="file" id="importEst" accept=".json" hidden></label></div>
+      <div class="bd"><ul class="list" id="savedList"></ul>
+      <p class="note">실장이 ‘견적 파일 내보내기’로 보낸 파일을 관리자 페이지에서 열면 같은 견적의 원가와 마진을 볼 수 있습니다.</p></div></div>
+  </section>
+
+  <section class="view" id="view-prices" hidden>
+    <div class="toolbar" style="margin-bottom:12px">
+      <button class="btn primary" id="applyData">변경 저장</button>
+      <button class="btn" id="exportFull">관리자용 data.js 내보내기</button>
+      <button class="btn" id="exportStaff">실장용 data.js 내보내기 (원가 제외)</button>
+      <button class="btn danger" id="resetData">파일 기본값으로 되돌리기</button>
+    </div>
+    <div class="card"><div class="hd"><h2>품목 단가</h2><select id="catFilter" aria-label="공정"></select><input id="catSearch" placeholder="품목 검색" style="flex:1 1 160px;width:auto"><button class="btn sm" id="addItemBtn">품목 추가</button></div>
+      <div class="bd tbl"><table id="catTbl"></table></div>
+      <div class="bd note">판매단가 = 원가 ÷ (1 − 마진율). 출처: <span class="pill 엑셀">엑셀</span> 상세자재 단가표 · <span class="pill 전화">전화</span> 전화 견적 · <span class="pill 장부">장부</span> 현장 실지출 · <span class="pill 추정">추정</span> 실제 원가 확인 필요</div></div>
+  </section>
+
+  <section class="view" id="view-settings" hidden>
+    <div class="toolbar" style="margin-bottom:12px"><button class="btn primary" id="publishPub">실장 페이지에 적용</button><span class="note">공정별 마진율·목표 마진·기업이윤을 실장 견적 화면 단가에 반영합니다.</span></div>
+    <div class="card" style="margin-bottom:14px"><div class="hd"><h2>전체 마진율 조절</h2><span class="note">현장 실적에서 나온 공정별 비율은 그대로 두고, 전체 마진(기업이윤 포함)만 맞춥니다.</span></div>
+      <div class="bd">
+        <div class="slider"><span class="note">10%</span><input type="range" id="mSlider" min="10" max="35" step="0.5" aria-label="전체 마진율"><span class="note">35%</span><b id="mVal">-</b></div>
+        <div class="toolbar" style="margin-top:8px"><label class="ck" style="grid-column:auto"><input type="radio" name="mref" value="std" checked> 33평 전체 리모델링 기준</label><label class="ck" style="grid-column:auto"><input type="radio" name="mref" value="cur"> 지금 작성 중인 견적 기준</label></div>
+        <p class="note" id="mInfo"></p>
+      </div></div>
+    <div class="card"><div class="hd"><h2>공정별 마진율</h2><span class="note">참고값은 현장 24곳 실적입니다. 지금 값은 실적 비율을 유지해 전체 21%가 되도록 맞춘 값입니다.</span></div><div class="bd tbl"><table id="marginTbl"></table></div></div>
+    <div class="card adminOnly" style="margin-top:14px"><div class="hd"><h2>기본 설정</h2></div><div class="bd form" id="settingsForm"></div></div>
+    <div class="card adminOnly" style="margin-top:14px"><div class="hd"><h2>공간 면적 계산 기준</h2><span class="note">평형만 넣었을 때 공간별 ㎡를 나누는 비율</span></div><div class="bd form" id="layoutForm"></div></div>
+    <p class="note adminOnly" style="margin-top:10px">바꾼 뒤 ‘단가·원가’ 화면의 ‘변경 저장’을 눌러야 이 PC에 유지됩니다.</p>
+  </section>
+
+  <section class="view" id="view-rules" hidden>
+    <div class="card"><div class="hd"><h2>옵션·수량 규칙</h2><span class="note">공간별 선택지, 수량식, 자동 인건비 규칙, 견적서 특기사항</span></div>
+      <div class="bd">
+        <p class="note">수량식에 쓸 수 있는 값: A 바닥㎡, W 벽+천장㎡, WT 욕실 벽타일㎡, P 둘레m, v 입력 수량, py 평형, exclM2 전용㎡, supplyM2 공급㎡, FT 바닥 시공 합계㎡, rooms·baths·balconies·level, T('품목명') 품목 수량 합계, C('공통 항목 key') 공통 선택, S('항목명') 같은 공간 선택, G.floorItem·G.paperItem 기본 마감.</p>
+        <textarea id="rulesJson" class="mono" rows="28" spellcheck="false"></textarea>
+        <div class="toolbar" style="margin-top:8px"><button class="btn primary" id="applyRules">규칙 적용</button><span class="note" id="rulesMsg"></span></div>
+      </div></div>
+  </section>
+
+  <section class="view" id="view-analysis" hidden>
+    <div class="kpis" id="anaKpis"></div>
+    <div class="card"><div class="hd"><h2>공정별 실적 마진</h2></div><div class="bd tbl"><table id="benchTbl"></table></div></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>현장별 실적</h2></div><div class="bd tbl"><table id="siteTbl"></table></div></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>계산 기준</h2></div><div class="bd"><ul class="note" id="anaNotes"></ul></div></div>
+  </section>
+</main>
+
+<div class="gate" id="gate" hidden>
+  <form class="card" id="gateForm">
+    <div class="hd"><h2>시도디자인 관리자</h2></div>
+    <div class="bd" style="display:flex;flex-direction:column;gap:10px">
+      <p class="note">원가·마진·현장 분석이 있는 페이지입니다. 관리자 비밀번호를 넣으세요.</p>
+      <label class="f">비밀번호<input id="gatePw" type="password" autocomplete="current-password"></label>
+      <div class="note" id="gateMsg"></div>
+      <button class="btn primary">들어가기</button>
+    </div>
+  </form>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>window.APP_MODE="staff";document.getElementById("modeLabel").textContent="실장 견적";</script>
+<script src="front.js?v=bd663513e0"></script>
+<script src="data.js?v=323094d3b8"></script>
+<script src="app.js?v=806e347061"></script>
+</body>
+</html>
