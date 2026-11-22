@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-21.89";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-22.90";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -1990,7 +1990,7 @@ function helpLineSet(v) {                             // 챗봇의 ‘켜기/끄
 }
 /* ‘어떤 게 부족하지?’ · ‘뭐 안 했지?’ · ‘다 됐어?’ · ‘이제 뭐 해야 해?’ — 지금 견적에서 덜 된 것을 짚고, 고치면 남은 것을 이어서 알려 준다 */
 const HELP_GAP1 = /부족|모자라|모자란|빠진|빠뜨|빠졌|빠트|누락|놓친|놓쳤|빼먹|빼놓|깜빡|까먹|덜(한|했|된|됐|넣)|안(한|했|넣은|넣었|채운|채웠|된|됐)|못(한|했)|남은(거|것|게|건|일)|남았|미완|미입력|비어있|비었|빈(곳|칸|데)/;   // 덜 된 것을 묻는 말
-const HELP_GAP2 = /^(이제|그럼|그러면|견적|이견적|지금견적|이거)?(은|는|이|가)?(다|전부|모두)(했|됐|된|끝났|끝난|채웠|넣었|한거|된거)|끝났(어|나|지|니|을까)|끝난(거|건)|완성(됐|된|이야|인가)|마무리(됐|된|해도)|(뭐|뭘|무엇을?|어떤걸?)(를|을)?(더)?(해야|하면돼|넣어야|채워야|봐야|확인해야|고쳐야)|다음(에|엔|은|으로)?(뭐|뭘|무엇)|이제(뭐|뭘|무엇)|할일|(확인|체크|점검|검토|수정)(할|해야할|해야될)(거|것|게|데|곳)|(점검|검토|검수|체크)(해|좀|부탁|한번|돌려)|(견적|이거|한번|좀)봐줘|내보내도돼|보내도돼|제출해도/;   // 다 됐는지 · 무엇을 더 해야 하는지 묻는 말
+const HELP_GAP2 = /^(이제|그럼|그러면|견적|이견적|지금견적|이거)?(은|는|이|가)?(다|전부|모두)(했|됐|된|끝났|끝난|채웠|넣었|한거|된거)|끝났(어|나|지|니|을까)|끝난(거|건)|완성(됐|된|이야|인가)|마무리(됐|된|해도)|(뭐|뭘|무엇을?|어떤걸?)(를|을)?(더)?(해야|하면돼|넣어야|채워야|봐야|확인해야|고쳐야)|다음(에|엔|은|으로)?(뭐|뭘|무엇)|이제(뭐|뭘|무엇)|할일|(확인|체크|점검|검토|수정)(할|해야할|해야될)(거|것|게|데|곳)|(점검|검토|검수|체크)(해|좀|부탁|한번|돌려)|(견적|이거|한번|좀)봐줘|내보내도돼|보내도돼|제출해도|견적서?(은|는|이|가)?(괜찮|어때|어떤가|문제없|이상없)/;   // 다 됐는지 · 무엇을 더 해야 하는지 묻는 말
 const HELP_GAP3 = /(문제|이상한(거|것|게|데)|잘못된(거|것|게|데)|틀린(거|것|게|데))(가|는|이)?(있|없)|제대로(했|됐|된|한|넣)|맞게(했|됐|넣)/;   // 뜻이 넓은 말: 견적을 가리킬 때만 점검으로 본다
 var HELP_TRACK = null, HELP_TRT = 0; let KB_KWS = null, KB_KWN = -1;
 function helpIsGap(q) {                               // 지금 견적에서 덜 된 것을 묻는 말인가 → "all" · 공정을 짚었으면 그 단계 키 목록 · 아니면 ""
@@ -2019,7 +2019,8 @@ function helpTrack() {                                // 점검한 뒤 견적을
 }
 function helpNow(q) {                                 // 지금 견적을 읽어 답한다: 빠진 것(검수) · 들어가 있는 수량 · 요약. 금액은 말하지 않는다
   const gap = helpIsGap(q); if (gap) return helpGapSay(gap);
-  const steps = STEPS(), now = /(지금|현재|이번|이|내|우리)\s*견적|견적서?에서?\s/.test(q), qtyW = /몇|얼마나|수량|들어가|들어갔|들어있|들어\s*있|개수|장수|물량|나와|나왔/.test(q);
+  const steps = STEPS(), now2 = q.replace(/\s+/g, "").length <= 26 && /들어갔|들어가\s*있|들어\s*있|들어간|잡혔|잡혀\s*있|나왔|계산됐|계산돼\s*있|넣어\s*놨|넣었|돼\s*있|되어\s*있/.test(q) && !/어떻게|왜|이유|방법|하려면|필요|할 ?때|깔 ?때|붙일 ?때|칠할 ?때/.test(q);   // (v90) ‘도배 몇 평 들어갔어’ · ‘지금 뭐뭐 들어갔어’ — ‘지금 견적’이라고 하지 않아도 지금 견적을 묻는 말
+  const now = now2 || /(지금|현재|이번|이|내|우리)\s*견적|견적서?에서?\s/.test(q), qtyW = /몇|얼마나|수량|들어가|들어갔|들어있|들어\s*있|개수|장수|물량|나와|나왔|잡혔|넣었/.test(q);
   if (/검수\s*(해|결과|돌려|부탁)/.test(q)) { const cs = estCheck(steps), top = cs.filter(c => c.lv < 3), mark = ["", "⚠", "❓", "ℹ"];
     return `<div class="hk">${top.length ? `확인할 것이 <b>${top.length}건</b> 있습니다.` : "빠진 단가·수량이나 짝이 안 맞는 공사는 없습니다."}</div>` + [...top, ...cs.filter(c => c.lv === 3)].slice(0, 7).map(c => `<div class="hl"><i>${mark[c.lv]}</i><span>${esc(c.t)}${c.go !== undefined ? ` <button type="button" class="lk" data-goto="${c.go}"${atAttr(c)}>가서 고치기</button>` : ""}</span></div>`).join("") }
   if (/(이|여기|지금|현재)\s*(단계|공정|화면)/.test(q) && /뭐|뭘|무엇|어떻게|설명|안내|해야|할\s*일|도와|알려/.test(q) && q.length <= 26) {   // 지금 보고 있는 단계 안내
@@ -2034,7 +2035,9 @@ function helpNow(q) {                                 // 지금 견적을 읽어
         : (f.note ? helpRow("기준", esc(helpCut(f.note, 70))) : "") + (f.edited ? helpRow("수량", "직접 고친 수량입니다.") : f.measured ? helpRow("수량", "실측 기준입니다.") : "")
           + (f.lid === "woodMat" && !ceilCalc().n ? helpRow("참고", "목작업 치수를 넣지 않아 어림값입니다. 치수를 적어 주시면 바로 계산합니다. <code data-helpfill>거실 2230*5730, 안방 3320*3820</code>") : ""))
       + (gi >= 0 ? `<div class="hm"><button type="button" data-goto="${gi}">‘${esc(steps[gi].label)}’ 단계 보기</button></div>` : "") }
-  if (/요약|현황|정리|상태|뭐\s*들어|어디까지/.test(q)) { const by = {}; for (const l of R.lines) if (!l.extra && l.qty > 0 && l.step) by[l.step] = (by[l.step] || 0) + 1; const n = estCheck(steps).filter(c => c.lv < 3).length;
+  if (!hit.length && now2 && toks.length && !/뭐|뭘|무엇|어떤/.test(q)) { const ls = helpWorkHit(toks.filter(t => !/^(들어|잡혔|잡혀|나왔|계산|넣어|넣었|돼있|되어|있나|있어|했어|했나|됐어|됐나)/.test(t)).join(" "));   // ‘방충망 들어갔어?’ — 꺼져 있는 공사
+    if (ls && ls.every(l => !lnState(l).on)) return `<div class="hk">‘${esc(ls.map(l => helpCut(lineLabel(l), 14)).join(" · "))}’은(는) 지금 견적에 <b>들어 있지 않습니다.</b></div><div class="hm">${ls.slice(0, 3).map(l => `<button type="button" data-helpline="${esc(l.id)}|1">${esc(helpCut(lineLabel(l), 12))} 넣기</button>`).join("")}</div>` }
+  if (/요약|현황|정리|상태|뭐\s*들어|뭐뭐|어디까지|들어간\s*(공사|거|게|것)|어떤\s*공사/.test(q)) { const by = {}; for (const l of R.lines) if (!l.extra && l.qty > 0 && l.step) by[l.step] = (by[l.step] || 0) + 1; const n = estCheck(steps).filter(c => c.lv < 3).length;
     return `<div class="hk">${E.py || "?"}평 · 방 ${E.rooms || "?"} · 욕실 ${E.baths || "?"} — 공사 ${Object.values(by).reduce((a, b) => a + b, 0)}줄이 들어가 있습니다.</div>` + steps.filter(s => by[s.key]).map(s => helpRow(s.label, by[s.key] + "줄")).join("") + helpRow("검수", n ? `확인할 것 ${n}건 · <code data-helpfill>지금 견적에서 빠진 거 있어?</code>` : "걸리는 항목 없음") }
   return null;
 }
@@ -2069,16 +2072,19 @@ function helpWorkFind(text) {                         // 문장에서 공사 줄
   const tail = /(만|은|는|도)?\s*(작업|시공|공사|진행|교체|설치|추가|체크|선택)?\s*(안\s*)?(할|하려|넣을|달|깔|바꿀|칠할|붙일|들어갈|해|넣어|바꿔|변경해|수정해|맞춰)?\s*(거야|거에요|거예요|겁니다|건데|거임|게요|예정(이야|입니다|이에요)?|계획(이야)?|려고(\s*해)?|기로\s*했\S*|줘|주세요|한다|합니다|해요)\s*[.!~]*$/;
   const segs = String(text).replace(/[.!~]+$/, "").split(/[,，+]|\s(?:및|그리고|하고)\s|(?<=[가-힣\d])(?:이랑|랑|하고)(?=\s|$)/).map(x => x.trim()).filter(Boolean), out = [], miss = [], seen = new Set(); let carry = [];
   const num = t => { const m = t.match(/(\d+)\s*(개|구|등|군데|곳|면|칸|조|세트|대|짝)/); return m ? +m[1] : null };
-  for (const seg of segs) { const off = /안\s*(할|해|함|합니다|한다)|빼고|빼줘|제외|없이/.test(seg), rooms = helpRoomsIn(seg); let rest = seg.replace(tail, " "), hit = false;
+  const offRe = /안\s*(할|해|함|합니다|한다)|빼고|빼줘|제외|없이/, offs = segs.map(x => offRe.test(x)), left = [];
+  for (let i = segs.length - 2; i >= 0; i--) if (!offs[i] && offs[i + 1] && !tail.test(segs[i]) && !/(은|는)$/.test(segs[i])) offs[i] = true;   // (v90) ‘도배랑 장판 빼줘’ — 끝말이 없는 앞 토막은 뒤 토막의 뜻을 따른다 (‘도배는 하고 장판은 빼줘’처럼 ‘은/는’으로 가른 말은 따르지 않는다)
+  for (let si = 0; si < segs.length; si++) { const seg = segs[si], off = offs[si], rooms = helpRoomsIn(seg); let rest = seg.replace(tail, " "), hit = false;
     const segL = [], push = l => { if (l) segL.push(l); if (l && !seen.has(l.id)) { seen.add(l.id); out.push({ l, n: num(seg), rooms: carry.concat(rooms), off, seg }) } };
     for (const [re, ids] of HELP_WSYN) if (re.test(rest)) { hit = true; ids.forEach(id => push(lineById(id))); rest = rest.replace(re, " ") }
     const terms = kbTok(rest).filter(t => t.length >= 2 && !HELP_WSTOP.test(t) && !HELP_WSTOP.test(t.replace(/(은|는|이|가|을|를|에|도|만|의)$/, ""))).map(t => t.replace(/(은|는|을|를|에|도|만|으로|로)$/, "")).filter(t => t.length >= 2 && !segL.some(l => kbNorm(l.items.map(aliasOf).join("")).includes(t))).sort((a, b) => b.length - a.length);   // 이름표에 없는 말은 공사 이름에서 찾는다 (이미 찾은 공사의 자재 이름은 뺀다)
     if (terms.length) { const sc = all.filter(x => !helpIsSup(x.l)).map(x => ({ l: x.l, n: terms.reduce((a, t) => a + (x.lab.startsWith(t) ? 3 : x.lab.includes(t) ? 2 : x.its.includes(t) ? 1 : 0), 0) })).filter(x => x.n).sort((a, b) => b.n - a.n);   // 이름이 그 말로 시작 > 이름에 있음 > 품목에만 있음
       let best = sc.length ? sc.filter(x => x.n === sc[0].n) : []; if (best.length > 2 && pt) { const std = best.filter(x => (x.l.tags || "").includes(pt)); if (std.length && std.length <= 2) best = std }   // 여럿이면 기본 견적에 들어가는 줄을 고른다
+      for (const t of terms) if (!all.some(x => x.lab.includes(t) || x.its.includes(t))) left.push(t);   // (v90) 어느 공사 이름에도 없는 낱말
       if (best.length && best.length <= 2) { hit = true; best.forEach(x => push(x.l)) } else if (best.length > 2) { hit = true; out.push({ many: best.slice(0, 5).map(x => x.l), term: terms[0] }) } else if (!hit) miss.push(terms[0]) }
     if (hit) carry = []; else if (rooms.length) carry = carry.concat(rooms);   // 공간만 말한 토막(‘거실이랑’)은 다음 공사에 붙인다
   }
-  return { out, miss };
+  return { out, miss, left };
 }
 function helpPlaceLights(ids, n) {                    // 그 방 안에 매입등 n개를 고르게 찍는다 (도면 그림을 올린 견적은 방 위치를 몰라 찍지 않는다) → 찍은 개수
   const g = planGeom(); if (!g.L || g.img || E.planImg) return 0; let put = 0; E.lights = E.lights || [];
@@ -2136,11 +2142,12 @@ function helpWork(q) {                                // 알아들으면 공사�
   if (!D.stepLines || /[?？]|어떻게|뭐가|뭐야|얼마|왜|언제|되나|될까|할까|해도|인가/.test(q) || !HELP_WINT.test(q)) return null;
   const { out, miss } = helpWorkFind(q), got = out.filter(x => x.l), many = out.filter(x => x.many); if (!got.length && !many.length) return null;
   const steps = STEPS(), snap = { ln: deep(E.ln || {}), skip: deep(E.skip || {}), lights: deep(E.lights || []) }, name = id => roomName(id).replace(/ \(.*\)/, ""), notes = [];
-  for (const x of got) { x.was = !!lnState(x.l).on; setLn(x.l, { on: !x.off }) }
+  for (const x of got) { x.was = !!lnState(x.l).on; lnSetAll(x.l, !x.off) }
   const pt = typeof presetTag === "function" ? presetTag() : "", sup = [];   // 켠 공사와 같은 단계의 자재·작업비 줄이 꺼져 있으면 함께 켠다
   for (const sk of new Set(got.filter(x => !x.off).map(x => stepOfLine(x.l)))) for (const l of D.stepLines[sk] || []) if (helpIsSup(l) && pt && (l.tags || "").includes(pt) && !lnState(l).on) { setLn(l, { on: true }); sup.push(l) }
   if (sup.length) notes.push(`같은 단계의 자재·작업비 ${sup.length}줄(${sup.slice(0, 3).map(l => lineLabel(l)).join(", ")}${sup.length > 3 ? " 외" : ""})도 함께 켰습니다.`);
   refresh();
+  { const nOff = helpSupOff(new Set(got.filter(x => x.off).map(x => stepOfLine(x.l)))); if (nOff) { notes.push(`그 단계에 남은 공사가 없어 자재·작업비 ${nOff}줄도 함께 껐습니다.`); refresh() } }
   for (const x of got) { if (x.off) continue;   // ‘바닥재 강마루로 바꿔 줘’ → 자재 · ‘걸레받이 40개로 바꿔 줘’ → 수량 · ‘걸레받이 수량 원래대로’ → 자동 계산으로
     if (x.l.items.length > 1) { const lab = kbNorm(lineLabel(x.l) + (x.l.label || "")), al = x.l.items.map(it => kbNorm(aliasOf(it))), toks = kbTok(x.seg.replace(/(\d)\.(\d)/g, "$1$2")).map(t => t.replace(/(으로|로)$/, "").replace(/^(\d+)t$/, "$1mm")).filter(t => t.length >= 2 && (!HELP_WSTOP.test(t) || (/^\d.*[가-힣a-z]/.test(t) && !/^\d+(개|구|등|군데|곳|면|칸|조|세트|대|짝|장|박스|롤|평|자)$/.test(t))) && !lab.includes(t) && !/^(바꿔|변경|수정|맞춰|수량|원래)/.test(t));   // ‘3연동’·‘2.2T’처럼 숫자로 시작하는 자재 이름도 본다
       const cand = toks.map(t => al.map((a, i) => a.includes(t) ? i : -1).filter(i => i >= 0)).filter(c => c.length && c.length < al.length).sort((a, b) => a.length - b.length)[0];
@@ -2164,7 +2171,7 @@ function helpWork(q) {                                // 알아들으면 공사�
   if (miss.length) helpMiss(q, "공사");
   return `<div class="hk">${on.length ? `공사 <b>${on.length}개</b>를 체크했습니다.` : ""}${got.length - on.length ? ` ${got.length - on.length}개는 껐습니다.` : ""}${!got.length ? "어느 공사인지 골라 주세요." : ""}</div>` + got.map(row).join("")
     + many.map(x => helpRow(x.term, "해당하는 공사가 여럿입니다. " + x.many.map(l => `<button type="button" data-helpline="${esc(l.id)}|1">${esc(helpCut(lineLabel(l), 12))}</button>`).join(" "))).join("")
-    + notes.map(t => helpRow(/자재를/.test(t) ? "자재" : "수량", /<button/.test(t) ? t : esc(t))).join("") + (miss.length ? helpRow("못 찾은 말", `${esc(miss.join(", "))} — 공사 이름을 조금 다르게 적거나 그 단계에서 직접 체크해 주세요.`) : "")
+    + notes.map(t => helpRow(/자재를/.test(t) ? "자재" : /함께/.test(t) ? "함께" : "수량", /<button/.test(t) ? t : esc(t))).join("") + (miss.length ? helpRow("못 찾은 말", `${esc(miss.join(", "))} — 공사 이름을 조금 다르게 적거나 그 단계에서 직접 체크해 주세요.`) : "")
     + (mini ? `<div class="hpl"><small>도면 — 체크한 공사가 들어가는 곳</small>${mini}</div>` : sks.map(sk => `<div class="hpl"><small>${esc((steps.find(y => y.key === sk) || {}).label || "")} 도면</small>${planSvg(sk)}</div>`).join(""))
     + `<div class="hm">${got.length ? '<button type="button" class="lk" data-helpwk="undo">방금 체크 되돌리기</button>' : ""}${sks.length ? `<button type="button" class="lk" data-goto="${steps.findIndex(y => y.key === sks[0])}">견적 도면에서 보기</button>` : ""}${solo ? '<button type="button" data-helpwk="solo">말한 공사만 남기고 나머지 끄기</button>' : ""}${only.map(o => `<button type="button" data-helpwk="only|${o.id}|${o.keep.join(",")}">‘${esc((steps.find(y => y.key === o.sk) || {}).label || "")}’ 단계는 ${esc(o.keep.map(name).join("·"))}만 남기기</button>`).join("")}</div>`
     + (got.length ? '<div class="hw">⚠ 말씀만 듣고 제가 체크한 것입니다. 수량·자재·위치는 실장님이 그 단계에서 직접 한 번 확인해 주세요.</div>' : "")
@@ -2272,7 +2279,7 @@ function helpNewSay(q) {                              // 인테리어를 처음 
     + helpRow("견적 만들기", '<button type="button" data-helpsay="견적서 어떻게 작성해?">작성 순서</button> <button type="button" data-helpsay="기본견적은 뭐 들어가?">기본으로 들어가는 공사</button>')
     + helpRow("추천 묻기", c("30평대 조명 어떻게 넣어?") + " " + c("30평대 욕실은 보통 어떻게 해?"));
 }
-const HELP_COSTQ = /(견적|공사비|총액|전체|올수리|리모델링|인테리어|평대?|평형)(은|는|이|가|하면|으로|에)?.{0,8}(얼마|비용|금액|가격|예산)|^(총|전체|합계)?(금액|비용|견적금액|공사비|합계)(은|는|이|가)?(얼마|어디|어떻게|확인|보여|알려)|평당(얼마|단가|가격|비용)/;
+const HELP_COSTQ = /(견적|공사비|총액|전체|올수리|리모델링|인테리어|평대?|평형)(은|는|이|가|하면|으로|에)?.{0,8}(얼마|비용|금액|가격|예산)|^(총|전체|합계)?(금액|비용|견적금액|공사비|합계)(은|는|이|가)?(얼마|어디|어떻게|확인|보여|알려)|평당(얼마|단가|가격|비용)|^(총|전체|합계|전부|다해서|다합쳐서?|모두|토탈|총액)(는|은|가|이)?(얼마|몇)|^(견적|금액)?(이|은|는)?얼마나?(나왔|나와|나오)/;
 function helpCostSay(q) {                             // 금액은 챗봇이 말하지 않는다 → 어디서 보는지, 무엇을 넣어야 나오는지
   let nl = 0; try { nl = R.lines.filter(l => !l.extra && l.qty > 0).length } catch (e) { }
   return '<div class="hk">금액은 제가 말로 하지 않고, 화면의 <b>합계 칸</b>과 <b>상세견적서</b>에서 바로 보시게 되어 있습니다.</div>'
@@ -2386,7 +2393,133 @@ function helpBig(q) {                                 // 위 세 가지 가운�
   if (HELP_HOWQ.test(qs) && !/^(사용법|도움말|기능)|챗봇|치수|계산|저장|인쇄|엑셀|도면|출력|pdf|내보내|버전|수정|고치|바꾸|삭제|지우|복사|새견적|새로운견적|견적서?[을를]?새로|이어서|이어쓰/i.test(qs) && (!tr || (tr === 1 && /견적/.test(qs) && qs.length <= 24)) && (/견적|프로그램|이거|여기|처음|첨|사용|작성/.test(qs) || !/공사|시공|인테리어|리모델링|올수리|수리/.test(qs))) return helpHowSay(q);
   return null;
 }
+/* ───── (v90) 짧은 말 · 여러 말투로 시키는 일 ─────
+   사용자(2026-11-22): “챗봇에서 의도를 이해하고 답변하는 방식도 계속해서 업데이트를 해둬 질문이 엄청다양하게 나올텐데 모든 작업에 계속해서 이렇게 작업했을때 답변이 이래 저렇게 질문했을때 답변이 이래 하면서 지적하면 어느세월에 다 얼로드 하겠어”.
+   한 문장씩 고치지 않는다 — ‘공사 이름 + 시키는 끝말’ 꼴이면 끝말이 무엇이든(빼 · 제외 · 안 해 · 필요없어 · 추가 · 넣자 · 포함시켜 …) 전부터 알아듣던 말로 바꿔 같은 일을 시킨다.
+   · helpCmd(q) → { say }(바꿔 말한 문장 → helpWork) · { html }(바로 답) · null(시키는 말이 아님 → 전처럼 저장된 답 · AI)
+   · 묻는 말(? · 어떻게 · 왜 · 종류 · 차이 · 꼭 …)은 건드리지 않는다. 공사 이름을 딱 짚지 못하거나 모르는 낱말이 남으면 건드리지 않는다(지식 질문이 견적을 바꾸지 않게).
+   · ‘도배 빼줘’ · ‘목공 다 빼’처럼 공정 이름으로 끄면 그 공정의 자재·작업비까지 함께 끈다(HELP_GRP). ‘해야 돼 · 빠졌어’는 한 번 묻는다.
+   · helpSpecSay = 평수 · 방 · 욕실 · 발코니 수 / helpAskNow = 겹치는 공사(중복) · 금액이 큰 공정 · (AI 없을 때) 줄이는 법.
+   시험: tools\chat_fuzz.js 의 qfuzz() — 공사 40여 개 × 끝말 40여 개를 돌려 실제로 켜지고 꺼졌는지, 묻는 말은 견적을 안 바꾸는지 본다. 새 끝말·새 유형은 거기에 더한다. */
+const HELP_QW = /[?？]|어떻게|어떡|어케|뭐가|뭐야|뭔가|뭐지|뭘까|뭔지|무엇|얼마|왜|언제|되나|될까|할까|해도|인가|인지|차이|종류|방법|순서|주의|기간|며칠|이유|장단점|추천|좋아|좋을|나아|나을|낫|괜찮|가능|꼭|굳이|뭐부터|어디|하면|라면|으면/;
+const HELP_OFFV = "빼버려|빼주세요|빼줘요|빼줘|빼라|빼자|뺄게|뺄래|빼고해줘|빼고해|빼고|빼|제외시켜줘|제외해줘|제외해|제외|삭제해줘|삭제해|삭제|지워줘|지워|꺼줘|끄자|꺼|안할거야|안할거임|안할래|안할게|안합니다|안한다|안해요|안해|안함|안넣을거야|안넣어|안들어가|안바꿀거야|안바꿔|안바꿈|교체안함|교체안해|필요없어요|필요없어|필요없음|필요없다|없어도돼|없어도됨|그대로둘거야|그대로둘게|그대로둬|그대로둠|그대로쓸거야|그대로쓸게|그대로써|유지할게|유지|손안댈거야|손안댄다|손안대|손안댐|패스|스킵|생략해줘|생략";
+const HELP_ONV = "추가해주세요|추가해줘|추가할게|추가하자|추가해|추가요|추가|넣어주세요|넣어줘|넣어야지|넣을게|넣을래|넣어라|넣자|넣어|포함시켜줘|포함시켜|포함해줘|포함해|포함|켜줘|켜|체크해줘|체크해|같이넣어줘|같이넣자|같이해줘|도같이|해주세요|해줘|할거임|할게|할래|진행해줘|진행할게|시공해줘";   // ‘하자’는 넣지 않는다 — ‘젠다이 하자’(결함)를 묻는 말과 같다
+const HELP_MUSTV = "해야합니다|해야한다|해야돼|해야되|해야해|해야함|해야지|들어가야돼|들어가야해|들어가야함|넣어야돼|넣어야해|넣어야함|빠졌어|빠졌네|빠졌다|빠져있어|안들어갔어|안들어가있어";
+const HELP_OFFR = new RegExp("^(.{1,22}?)(" + HELP_OFFV + ")$"), HELP_ONR = new RegExp("^(.{2,22}?)(" + HELP_ONV + ")$"), HELP_MUSTR = new RegExp("^(.{2,22}?)(" + HELP_MUSTV + ")$");
+const HELP_GRP = [   // 공정 이름 → 그 공정의 줄 (자재·작업비 포함) — ‘도배 빼줘’ · ‘목공 다 빼’ · ‘주방은 손 안 대’
+  [/^(도배|벽지|도배공사)$/, l => stepOfLine(l) === "s9"], [/^(장판|마루|강마루|바닥재|바닥|바닥공사)$/, l => stepOfLine(l) === "s8"], [/^(필름|필름공사|필름작업)$/, l => /^(film|sashFilm|sinkFilm|closetFilm)/.test(l.id)], [/^(페인트|도장)$/, l => /^(paint|wallPaint)$/.test(l.id)],
+  [/^(목공|목작업|목공사)$/, l => stepOfLine(l) === "s4"], [/^(전기|조명|전기공사|전기조명)$/, l => stepOfLine(l) === "s5"], [/^(타일|타일공사)$/, l => /tile/i.test(l.id) || l.id === "grout"],
+  [/^(주방|부엌|주방공사)$/, l => /^(sink|top|bowl|ktap|hood|cooktop|kitTile|demoKitchen|island|fridge|tall|appInst)$/.test(l.id)], [/^(철거|철거공사)$/, l => /^(demo|waste$|asbestos$)/.test(l.id)], [/^(샷시|샤시|창호|창문)$/, l => /^(window|demoSash|caulk|winLabor)$/.test(l.id)],
+  [/^(문|도어|문교체|방문교체)$/, l => stepOfLine(l) === "s6" && l.id !== "jungmun" && l.id !== "lock"], [/^(가구|수납|수납가구)$/, l => stepOfLine(l) === "s11"], [/^(발코니|베란다)$/, l => /^(elastic|balPaint|balTile|balTile2|balWall|balWall2|balLight)$/.test(l.id)]];
+function helpWorkHit(x) {                             // 그 말이 공사 줄을 딱 짚는가 → 줄 목록 (못 찾았거나 · 여럿이라 고를 수 없거나 · 모르는 낱말이 남으면 null)
+  try { const r = helpWorkFind(String(x) + " 추가해줘"), got = r.out.filter(o => o.l); return got.length && !r.out.some(o => o.many) && !r.miss.length && !(r.left || []).length ? got.map(o => o.l) : null } catch (e) { return null } }
+const helpIsSup2 = l => /(Sub|Labor|Meal)$/.test(l.id) || /^(plumbMat|woodMat|caulk|doorMeasure|doorInstall)$/.test(l.id);   // 그 단계의 공사에 딸린 줄(부자재 · 작업비 · 식대 · 실측비) — 이름이 아니라 줄 id 로 본다(‘가벽 작업비’는 공사다)
+function helpSupOff(sks) { let n = 0;                 // 공사를 끈 단계에 켜진 공사가 하나도 안 남았으면 그 단계의 딸린 줄도 끈다 (‘필름 안 해’ → 필름 부자재·작업비·식대)
+  for (const sk of sks) { if (!sk || R.lines.some(r => r.step === sk && !r.extra && r.lid && r.qty > 0 && (l => l && !helpIsSup2(l))(lineById(r.lid)))) continue;
+    for (const l of D.stepLines[sk] || []) if (helpIsSup2(l) && lnState(l).on) { setLn(l, { on: false }); n++ } } return n }
+function helpOffIds(ls, name) {                       // 줄 여러 개를 한 번에 끈다 (되돌리기 = 말하기 전으로)
+  const snap = { ln: deep(E.ln || {}), skip: deep(E.skip || {}), lights: deep(E.lights || []) }, steps = STEPS(); for (const l of ls) lnSetAll(l, false); refresh();
+  const more = helpSupOff(new Set(ls.map(stepOfLine))); if (more) refresh(); HELP_WK = { snap, ids: [] };
+  const gi = steps.findIndex(s => s.key === stepOfLine(ls[0]));
+  return `<div class="hk">‘${esc(name)}’ 쪽 공사 <b>${ls.length}줄</b>을 껐습니다.</div>` + helpRow("끈 것", esc(ls.slice(0, 7).map(l => helpCut(lineLabel(l), 12)).join(", ")) + (ls.length > 7 ? ` 외 ${ls.length - 7}줄` : "")) + (more ? helpRow("함께", `남은 공사가 없는 단계의 자재·작업비 ${more}줄도 껐습니다.`) : "")
+    + `<div class="hm"><button type="button" class="lk" data-helpwk="undo">말하기 전으로 되돌리기</button>${gi >= 0 ? `<button type="button" class="lk" data-goto="${gi}">그 단계 보기</button>` : ""}</div><div class="hw">⚠ 말씀만 듣고 제가 끈 것입니다. 빠지면 안 되는 공사가 없는지 실장님이 직접 한 번 확인해 주세요.</div>`;
+}
+function helpCmd(q) {
+  const s = String(q).trim().replace(/[.!~…]+$/, "").trim(), c = s.replace(/\s+/g, "");
+  if (!D.stepLines || c.length < 3 || c.length > 30 || HELP_QW.test(c) || HELP_WINT.test(s) || /\d\s*[*xX×]\s*\d/.test(s)) return null;   // 전부터 알아듣던 말(HELP_WINT)은 그대로 둔다
+  const cut = n => { let i = s.length, k = n; while (i > 0 && k > 0) { i--; if (!/\s/.test(s[i])) k-- } return s.slice(0, i).trim() };   // 끝에서 글자 n개(띄어쓰기 빼고)를 뗀 앞부분 — 띄어쓰기는 살린다
+  const forms = x => { const out = [x.trim()]; let y = x.trim(); for (let k = 0; k < 2; k++) { y = y.replace(/\s*(은요|는요|은|는|도|만|을|를|이|가)$/, "").trim(); out.push(y); y = y.replace(/\s*(교체|공사|시공|작업|설치)$/, "").trim(); out.push(y) } return [...new Set(out)].filter(Boolean) };   // 조사·‘교체/공사’를 차례로 뗀 꼴들 (‘걸레받이’의 ‘이’를 조사로 떼지 않게, 떼기 전의 말부터 맞춰 본다)
+  const pick = x => { for (const y of forms(x)) { const ls = helpWorkHit(y); if (ls) return { x: y, ls } } return null };
+  const grp = x => { const w = x.replace(/\s+/g, "").replace(/(다|전부|전체|모두|싹|싹다|관련|쪽|은|는)+$/, ""); return HELP_GRP.find(g => g[0].test(w)) ? [w, HELP_GRP.find(g => g[0].test(w))[1]] : null };
+  let m;
+  // ① 종류: ‘장판 말고 강마루’ · ‘바닥 강마루로 해줘’ · ‘도배 합지로’
+  const alt = (a, b) => { const nb = kbNorm(b).replace(/^(\d+)t$/, "$1mm"); if (nb.length < 2) return false; const ls = helpWorkHit(a) || helpWorkHit(b) || []; return ls.some(l => l.items.length > 1 && (al => al.some(x => x.includes(nb)) && !al.every(x => x.includes(nb)))(l.items.map(it => kbNorm(aliasOf(it))))) };
+  { const tk = s.split(/\s+/); if (tk.length > 1 && /^(해주세요|해줘|해|할게|하자|갈게|가자|교체해줘|교체|변경해줘|변경|바꿔줘|바꿔)$/.test(tk[tk.length - 1])) tk.pop();
+    const mi = tk.findIndex(w => /말고$/.test(w)), last = tk[tk.length - 1] || "";
+    if (mi >= 0 && mi < tk.length - 1) { const a = tk.slice(0, mi + 1).join(" ").replace(/\s*(은|는|을|를)?\s*말고$/, "").replace(/(은|는|을|를)$/, ""), b = tk.slice(mi + 1).join(" ").replace(/(으로|로)$/, ""); if (a.length >= 2 && b.length >= 2 && alt(a, b)) return { say: `${a} ${b}로 바꿔줘` } }
+    else if (tk.length >= 2 && tk.length <= 4 && /(으로|로)$/.test(last)) { const a = tk.slice(0, -1).join(" ").replace(/(은|는|을|를)$/, ""), b = last.replace(/(으로|로)$/, ""); if (a.length >= 2 && b.length >= 2 && alt(a, b)) return { say: `${a} ${b}로 바꿔줘` } } }
+  // ② 수량: ‘매입등 10개’ · ‘걸레받이 40개로’ · ‘콘센트 2개 더 추가’
+  if ((m = c.match(/^(.{2,16}?)(?:수량|갯수|개수)?(?:은|는|을|를)?(\d+(?:\.\d+)?)(개|구|등|군데|곳|면|칸|조|세트|대|짝|장|박스|롤|자|평)(더)?(?:으로|로)?(추가해줘|추가|넣어줘|넣어|달아줘|달아|설치해줘|설치|해주세요|해줘|해|바꿔줘|바꿔|변경해줘|변경|맞춰줘|맞춰|수정해줘|수정|할게)?$/))) {
+    const pk = pick(cut(c.length - m[1].length)), x = pk ? pk.x : "", l = pk && pk.ls.length === 1 ? pk.ls[0] : null, n = +m[2], add = !!m[4] || /^(추가|넣어|달아|설치)/.test(m[5] || "");
+    if (l && (m[3] !== "평" || l.pyq || l.pyf)) { if (l.id === "down") return { say: `${x} ${n}${m[3]} 추가해줘` };
+      const rl = R.lines.find(r => r.lid === l.id), cur = rl && lnState(l).on ? +rl.qty || 0 : 0; return { say: `${x} ${add && cur > 0 ? cur + n : n}${m[3]}로 바꿔줘` } } }
+  // ③ 빼기
+  if ((m = c.match(HELP_OFFR))) { const x0 = cut(m[2].length), x = forms(x0).pop() || ""; if (x && !/넣|추가|포함|만$/.test(x0)) {
+      if (/^(욕실|화장실)(다|전부|전체|모두)?$/.test(x.replace(/\s+/g, ""))) { const bs = bathList(); if (bs.length) return { html: '<div class="hk">어느 욕실을 공사하지 않을까요?</div><div class="hm">' + bs.map(b => `<button type="button" class="lk" data-bathmode="${b.id}|none">${esc(b.name)}</button>`).join("") + (bs.length > 1 ? '<button type="button" class="lk" data-bathmode="*|none">모두</button>' : "") + "</div>" } }
+      { const parts = x0.split(/\s*,\s*|\s+(?:및|그리고)\s+|(?<=[가-힣])(?:이랑|랑|하고)\s+/).map(y => y.trim()).filter(Boolean), gs = parts.map(y => forms(y).map(grp).find(Boolean));   // ‘도배랑 장판 빼줘’ — 공정 이름 여럿
+        if (parts.length > 1 && gs.every(Boolean)) { const ls = Object.values(D.stepLines).flat().filter(l => !l.gone && !l.dead && lnState(l).on && gs.some(g => g[1](l))); return { html: ls.length ? helpOffIds(ls, gs.map(g => g[0]).join(" · ")) : `<div class="hk">‘${esc(gs.map(g => g[0]).join(" · "))}’ 쪽은 지금 켜진 공사가 없습니다.</div>` } } }
+      const g = forms(x0).map(grp).find(Boolean); if (g) { const ls = Object.values(D.stepLines).flat().filter(l => !l.gone && !l.dead && lnState(l).on && g[1](l)); return { html: ls.length ? helpOffIds(ls, g[0]) : `<div class="hk">‘${esc(g[0])}’ 쪽은 지금 켜진 공사가 없습니다.</div>` } }
+      const pk = pick(x0); if (pk) return { say: `${pk.x} 안 할 거야` } } }
+  // ④ ‘해야 돼 · 빠졌어’ — 한 번 묻는다
+  if ((m = c.match(HELP_MUSTR))) { const x0 = cut(m[2].length), pk = x0 && !/빼|제외|말고|없이|안\s*(해|할)/.test(x0) ? pick(x0) : null, x = pk ? pk.x : "", ls = pk ? pk.ls : null;
+    if (ls) { const off = ls.filter(l => !lnState(l).on), nm = ls.map(l => helpCut(lineLabel(l), 14)).join(" · "), gi = STEPS().findIndex(y => y.key === stepOfLine(ls[0]));
+      return { html: off.length ? `<div class="hk">‘${esc(nm)}’ 공사를 견적에 넣을까요?</div><div class="hm"><button type="button" data-helpsay="${esc(x)} 추가해줘">넣기</button><button type="button" class="lk" data-helpsay="${esc(x)} 시공이 어떻게 되는거야?">설명 보기</button></div>` : `<div class="hk">‘${esc(nm)}’은(는) 이미 견적에 들어 있습니다.</div><div class="hm">${gi >= 0 ? `<button type="button" class="lk" data-goto="${gi}">그 단계 보기</button>` : ""}</div>` } } }
+  // ⑤ 넣기
+  if ((m = c.match(HELP_ONR))) { const x0 = cut(m[2].length), pk = x0 && !/빼|제외|말고|없이|안\s*(해|할)/.test(x0) ? pick(x0) : null; if (pk) return { say: `${pk.x} 추가해줘` } }
+  return null;
+}
+const HELP_NUMK = { 한: 1, 하나: 1, 두: 2, 둘: 2, 세: 3, 셋: 3, 네: 4, 넷: 4, 다섯: 5 };
+function helpSpecSay(q) {                             // ‘평수 28평으로 바꿔줘’ · ‘방 4개로’ · ‘욕실 하나야’ · ‘방3 욕실2’ — 현장 정보의 평형 · 방 · 욕실 · 발코니 수를 말로 바꾼다
+  const qs = String(q).replace(/\s+/g, "").replace(/[?？!.~]+$/, ""); if (qs.length < 3 || qs.length > 28 || HELP_QW.test(qs) || /[*xX×]/.test(qs)) return null;
+  const V = "바꿔주세요|바꿔줘|바꿔|변경해줘|변경해|변경|수정해줘|수정해|수정|고쳐줘|고쳐|해줘|해|맞춰줘|맞춰", set = {}; let m;
+  if ((m = qs.match(new RegExp("^(?:평수|평형|공급평형)(?:는|은|를|을)?(\\d{2,3})(?:평형|평)?(?:으로|로|이야|야)?(?:" + V + ")?$"))) || (m = qs.match(new RegExp("^(\\d{2,3})(?:평형|평)(?:으로|로)(?:" + V + ")$"))) || (m = qs.match(new RegExp("^\\d{2,3}(?:평형|평)(?:말고|아니고|아니라|에서)(\\d{2,3})(?:평형|평)?(?:으로|로|이야|야)?(?:" + V + ")?$")))) set.py = +m[1];
+  else { const rest = qs.replace(/(발코니|베란다)(?:가|는|은)?없(?:어요|어|음|다|습니다)/g, () => { set.balconies = 0; return "" }).replace(/(방|욕실|화장실|발코니|베란다)(?:은|는|이|가|을|를|수|개수)?(\d|하나|한|둘|두|셋|세|넷|네|다섯)(?:개|칸|곳)?/g, (all, k, n) => { set[k === "방" ? "rooms" : /욕실|화장실/.test(k) ? "baths" : "balconies"] = /^\d$/.test(n) ? +n : HELP_NUMK[n]; return "" });
+    if (!Object.keys(set).length || rest.replace(new RegExp("으로|로|이야|야|임|입니다|이에요|예요|짜리|구조|집|,|그리고|이고|고|" + V, "g"), "") !== "") return null }
+  const LIM = { py: [15, 65, "평형", "평"], rooms: [1, 5, "방", "개"], baths: [1, 3, "욕실", "칸"], balconies: [0, 3, "발코니", "개"] }, done = [], bad = [];
+  for (const k in set) { const [lo, hi, nm, u] = LIM[k], v = set[k]; if (!(v >= lo && v <= hi)) { bad.push(`${nm}은(는) ${lo}~${hi}${u} 사이로 고를 수 있습니다.`); continue } if ((+E[k] || 0) === v) { done.push(`${nm}은(는) 이미 ${v}${u}입니다.`); continue }
+    done.push(`${nm} ${+E[k] || 0}${u} → <b>${v}${u}</b>`); E[k] = v; if (k === "py") E.excl = ""; set._ch = true }
+  if (!set._ch) return `<div class="hk">${[...done, ...bad].join(" ")}</div>`;
+  refresh(true);
+  return `<div class="hk">${done.join(" · ")}(으)로 바꿨습니다. 수량과 금액을 다시 계산했습니다.</div>` + (bad.length ? helpRow("안 바꾼 것", esc(bad.join(" "))) : "") + helpRow("그대로인 것", "직접 넣어 둔 치수 · 수량 · 평수는 그대로입니다. ‘현장 정보’에서 한 번 확인해 주세요.")
+    + '<div class="hm"><button type="button" class="lk" data-undo>되돌리기</button><button type="button" class="lk" data-goto="0">현장 정보 보기</button></div><div class="hw">⚠ 말씀만 듣고 제가 바꾼 것입니다. 평형 · 방 · 욕실 수는 실장님이 직접 한 번 확인해 주세요.</div>';
+}
+const HELP_DUPS = [   // [이 줄이 켜져 있고, 이 줄도 켜져 있으면, 알릴 말] — 같은 곳에 두 가지가 겹칠 수 있는 짝
+  [["doorSet"], ["filmDoor"], "방문을 새로 바꾸는데 ‘문·문틀 필름’도 들어 있습니다. 새 문·문틀에는 보통 필름을 하지 않습니다 (문틀은 살리고 필름만 하는 곳이 있으면 그대로)."],
+  [["bathDoorSet"], ["filmBath"], "욕실문을 새로 바꾸는데 ‘욕실문·문틀 필름’도 들어 있습니다."],
+  [["doorSet"], ["roomLeaf", "roomFrame", "doorLeaf", "hinge", "handle"], "‘방문 교체’(문짝·문틀·경첩 포함)와 낱개 문짝·문틀·경첩·손잡이가 같이 들어 있습니다."],
+  [["bathDoorSet"], ["bathLeaf", "bathFrame"], "‘욕실문 교체’(문짝·문틀 포함)와 낱개 욕실 문짝·문틀이 같이 들어 있습니다."],
+  [["ceilMold", "baseMold"], ["filmMold"], "몰딩·걸레받이를 새로 하는데 ‘몰딩·걸레받이 필름’도 들어 있습니다."],
+  [["window"], ["sashFilm"], "창문(샷시)을 교체하는데 ‘창호 필름’도 들어 있습니다."],
+  [["sink"], ["sinkFilm"], "싱크대를 새로 하는데 ‘싱크·가구 필름 리폼’도 들어 있습니다."],
+  [["closet", "shoe"], ["closetFilm"], "붙박이장·신발장을 새로 하는데 ‘붙박이장·신발장 필름’도 들어 있습니다."],
+  [["jungmun"], ["filmEntry"], "중문을 새로 하는데 ‘현관문·중문틀 필름’도 들어 있습니다 (현관문만 필름이면 그대로)."],
+  [["paper"], ["wallPaint"], "벽지(도배)와 ‘벽면 도장(페인트)’이 같이 들어 있습니다. 같은 벽이면 한 가지만 합니다."],
+  [["elastic"], ["balPaint"], "발코니 탄성코트와 발코니 페인트가 같이 들어 있습니다. 같은 벽이면 한 가지만 합니다."],
+  [["shower"], ["slidebar"], "샤워 수전(슬라이드바 포함)과 ‘샤워기 거치대(슬라이드바)’가 같이 들어 있습니다."],
+  [["turning"], ["turning2"], "터닝도어가 ‘창문·확장’ 단계와 ‘문·중문’ 단계에 둘 다 들어 있습니다."]];
+function helpDupSay() {                               // ‘이 견적서에서 중복으로 들어간 부분이 있을까?’(2026-11-21 실장이 실제로 물은 말) — 같은 이름이 두 번 · 같은 곳에 겹치는 짝
+  const steps = STEPS(), on = new Set(R.lines.filter(l => l.lid && l.qty > 0).map(l => l.lid)), rows = [], lab = id => { const l = lineById(id); return l ? helpCut(lineLabel(l), 14) : id };
+  for (const [as, bs, msg] of HELP_DUPS) { const a = as.filter(x => on.has(x)), b = bs.filter(x => on.has(x)); if (a.length && b.length) rows.push({ t: msg, id: b[0], offs: b }) }
+  const seen = new Map(); for (const l of R.lines) if (l.qty > 0) { const k = kbNorm(custName(String(l.name || "")).replace(/\(.*?\)/g, "")) + "|" + (l.spaceName || ""); if (k.length > 3) (seen.get(k) || seen.set(k, []).get(k)).push(l) }
+  for (const ls of seen.values()) if (ls.length > 1 && ls.some(l => l.extra)) rows.push({ t: `‘${custName(String(ls[0].name))}’이(가) ${ls.length}번 들어 있습니다 (직접 넣은 줄 · 추가 품목 포함).`, sk: (ls.find(l => !l.extra) || ls[0]).step, id: (ls.find(l => l.lid) || {}).lid });
+  const row = r => { const sk = r.sk || (r.id && stepOfLine(lineById(r.id) || {})), gi = steps.findIndex(s => s.key === sk);
+    return `<div class="hl"><i>⚠</i><span>${esc(r.t)}${gi >= 0 ? ` <button type="button" class="lk" data-goto="${gi}"${r.id ? atAttr({ at: { lid: r.id, say: "겹치는지 확인해 주세요. 필요 없으면 체크를 끄세요." } }) : ""}>가서 보기</button>` : ""}${(r.offs || []).slice(0, 2).map(id => ` <button type="button" class="lk" data-helpline="${esc(id)}|0">‘${esc(lab(id))}’ 끄기</button>`).join("")}</span></div>` };
+  return `<div class="hk">${rows.length ? `겹칠 수 있는 곳이 <b>${rows.length}건</b> 있습니다. 같은 곳에 둘 다 하는지 확인해 주세요.` : "겹쳐 들어간 공사는 찾지 못했습니다."}</div>` + rows.slice(0, 6).map(row).join("")
+    + helpRow("본 것", "같은 이름이 두 번 들어간 줄 · 새로 바꾸는데 필름도 든 곳(문 · 몰딩 · 샷시 · 싱크대 · 붙박이장) · 도배와 페인트 · 세트와 낱개") + '<div class="hm"><button type="button" class="lk" data-helpsay="뭐 안 했지?">빠진 것도 확인</button></div>';
+}
+function helpTopSay(cut) {                            // ‘제일 비싼 공정이 뭐야’ · (AI 없을 때) ‘어디를 줄이면 돼’ — 순서만 말한다(금액은 견적 합계 칸)
+  const ps = PROCS.filter(p => R.byProc[p] && R.byProc[p].amt > 0).sort((a, b) => R.byProc[b].amt - R.byProc[a].amt); if (!ps.length) return '<div class="hk">아직 켜진 공사가 없습니다. 공사를 체크하면 공정별 금액이 오른쪽 ‘견적 합계’ 칸에 나옵니다.</div>';
+  const steps = STEPS(), gi = p => steps.findIndex(s => (s.procs || []).includes(p));
+  return `<div class="hk">${cut ? "금액이 큰 공정부터 보는 것이 빠릅니다." : "지금 견적에서 금액이 큰 공정 순서입니다."} <small>(금액은 오른쪽 ‘견적 합계’ 칸)</small></div>`
+    + ps.slice(0, 5).map((p, i) => `<div class="hl"><b>${i + 1}</b><span>${esc(PROC_LABEL[p])}${gi(p) >= 0 ? ` <button type="button" class="lk" data-goto="${gi(p)}">그 단계 보기</button>` : ""}</span></div>`).join("")
+    + (cut ? helpRow("줄이는 방법", "① 그 공정에서 종류(등급)를 낮춥니다 ② 범위를 줄입니다 (욕실 덧방 · 문은 교체 대신 필름 · 방 일부 제외) ③ 공사 줄의 ‘비교견적’ 단추로 종류별 차액을 먼저 봅니다") : "")
+    + '<div class="hm"><button type="button" class="lk" data-helpsay="중복된 거 있어?">겹치는 공사 찾기</button><button type="button" class="lk" data-helpsay="뭐 안 했지?">덜 된 것 확인</button></div>';
+}
+const HELP_DUPQ = /중복|겹치|겹친|겹쳐|겹침|이중으로|두번들어|2번들어|두번씩|똑같은(거|게|것)|같은(거|게|것)(이|가)?(또|두번)/, HELP_TOPQ = /(제일|가장|젤)(비싼|큰|많이(드는|나오는|들어가는|나온|들어간|차지)|돈많이|금액(이)?(큰|많))|어느(공정|공사)(이|가)?(제일|가장|젤)|(공정|공사)별(비중|순위|금액순)|돈(이)?(어디|제일많이|가장많이)|어디(에|서)(돈|금액)(이)?(제일|가장|많이)/, HELP_CUTQ = /(줄이|줄일|줄여|낮추|낮출|낮춰|아끼|아낄|절감|깎)/;
+function helpAskNow(q) {                              // 지금 견적을 놓고 묻는 말: 겹치는 공사 · 금액이 큰 공정 · (AI 없을 때) 줄이는 법
+  const qs = String(q).replace(/\s+/g, "").replace(/[?？!.~]+$/, ""); if (!D.stepLines || qs.length < 3 || qs.length > 34 || /\d\s*[*xX×]\s*\d/.test(q)) return null;
+  if (HELP_DUPQ.test(qs) && /견적|들어간|들어갔|들어가있|넣은|넣었|공사|항목|부분|거|게|것|체크|있어|있나|있을까|있니|확인|봐줘|찾아|없나|없어/.test(qs.replace(HELP_DUPQ, "")) && !/시공|붙이|붙여|깔|바르|칠|이음|조인트|이중(창|샷시|주차|천장|바닥|유리)|방수|벽지|도배지|타일|장판|필름지|하자|어떻게|왜/.test(qs)) return helpDupSay();
+  if (HELP_TOPQ.test(qs) && !/자재|브랜드|제품|타일|벽지|장판|마루|도기|수전|등급/.test(qs)) return helpTopSay(false);
+  if (!KB_AI && HELP_CUTQ.test(qs) && /견적|금액|가격|비용|총액|합계|공사비|돈|예산|어디|어느|뭘|뭐를|무엇/.test(qs) && !KB_TRADE.some(x => x[1].test(q)) && !/치수|수량|로스|인원|기간|공기/.test(qs)) return helpTopSay(true);
+  return null;
+}
 function helpDo(q) {                                  // 프로그램이 직접 할 수 있는 일이면 그 답(HTML), 아니면 null
+  let r = null; try { r = helpSpecSay(q) || helpAskNow(q) } catch (e) { r = null } if (r) return r;
+  let c = null; try { c = helpCmd(q) } catch (e) { c = null }
+  if (c && c.html) return c.html; if (c && c.say) { try { r = helpWork(c.say) } catch (e) { r = null } if (r) return r }
+  return helpDo1(q);
+}
+function helpDo1(q) {                                 // (v90 전의 helpDo) 치수 계산 · 큰 질문 · 공사 체크 · 프로그램 조작
   const p = helpParse(q), calcW = /계산|수량|물량|산출|몇\s*(장|단|개|박스|평)|면적|평수|석고|각재|다루끼|타일|로스|목작업|목공|천[장정전]|가벽/.test(q), wood = /석고|각재|다루끼|목작업|목공|목작|천[장정전]|가벽/.test(q), qs = q.replace(/\s+/g, "");
   const n = p.rows.length, qW = /계산|수량|몇\s*(장|단|개|박스)|석고|각재|다루끼|로스|면적|평수/.test(q);   // 치수가 여러 개면 치수 목록, 하나뿐이면 계산을 바라는 말이 있을 때만 계산으로 본다
   if (!n) { const be = helpBasicSay(q); if (be) return be }   // (v79) ‘32평 기본 인테리어 견적 어느 정도?’ → 기본 공사로 새 견적을 만들어 준다
