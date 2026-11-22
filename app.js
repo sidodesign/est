@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-22.90";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-22.91";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -739,7 +739,7 @@ function finish(S, lines, errors, FT) {
     const p = byProc[l.proc] = byProc[l.proc] || { amt: 0, cost: 0, 자재: 0, 노무: 0, 경비: 0 }; p.amt += l.amt; p.cost += l.cost; p[l.kind] = (p[l.kind] || 0) + l.amt;
     const s = bySpace[l.space] = bySpace[l.space] || { amt: 0 }; s.amt += l.amt;
   }
-  if (!noCost()) { const cov = E.costOv || {}, mov = E.mgOv || {};   // (v88) 공정의 마진율을 실장이 고친 값(E.mgOv — 공사 금액이 바뀌어도 그 비율) · (v87) 실공사비를 고친 값(E.costOv)
+  if (!noCost()) { const cov = E.costOv || {}, mov = E.mgOv || {};   // (v90) 공정의 원가를 실장이 고쳐 적은 값(E.costOv) · (v88) 마진율로 고쳐 둔 값(E.mgOv — 전에 쓰던 견적에 남아 있으면 그대로 읽는다)
     for (const pk in byProc) { const b = byProc[pk]; b.cost0 = b.cost; let c = null; if (mov[pk] !== undefined && mov[pk] !== "" && isFinite(+mov[pk])) c = b.amt * (1 - +mov[pk]); else if (cov[pk] !== undefined && cov[pk] !== "" && +cov[pk] >= 0) c = +cov[pk]; if (c !== null) { cost += c - b.cost; b.cost = c; b.ov = true } } }
   const biz = Math.round(sum * (+E.biz || 0) / 100), unit = +D.settings.roundUnit || 10000;
   const pre = sum + biz, net = Math.floor(pre / unit) * unit, cut = net - pre, vat = Math.round(net * (D.settings.vat ?? 0.1));
@@ -1515,29 +1515,41 @@ function goSpot(step, at) {                           // 그 단계로 가서(�
   if (!at) { window.scrollTo({ top: 0, behavior: "smooth" }); return }
   setTimeout(() => spotMark(at), 60);
 }
-/* (v88) 공정별 마진 — 견적 합계 칸의 공정 줄 바로 아래. 사용자(2026-11-21): “마진에 관한내용은 안올라오고 있어 … 견적합계 밑에 각 공정별로 체크하면 공정들도 추가되고 마진도 같이 적고 실장들이 수정할 수 있게 만들어줘야해
-   그래서 각 실장들이 얼마의 마진을 생각하고 견적을 넣는지 알 수 있지 그걸 회사pc에 다 저장되게 … 상세견적서에서는 보이지도 않아야”.
-   · 공정 줄마다 ‘마진 [ ]% 금액’ — 칸의 흐린 숫자 = 단가표 원가로 계산한 마진율. 실장이 고치면 그 공정은 그 비율로 계산한다(E.mgOv[공정] = 0.3 · 금액이 바뀌어도 비율 유지 · ↺ 되돌림).
-   · 실장 화면 = 로그인해서 서버가 원가표를 내려 줬을 때만(COST_ON) · 관리자 화면 = 늘. ‘마진 가리기’로 감출 수 있다(고객과 같이 볼 때 · 그 기기에 기억).
-   · 저장할 때 E.mg(공급가 · 실공사비 · 마진율 · 고친 공정 수)를 같이 적어 회사 저장소 목록에서 실장별 마진이 보인다. 고객 견적서 · 인쇄 · 엑셀에는 나가지 않는다. */
+/* (v90) 공정별 원가 · 견적 금액 — 견적 합계 칸. 사용자(2026-11-22): “마진이 있는게 중요한거보다 얼마정도의 금액이 산정되었는지 알아야 하는게 직관적이야
+   예를 들어 철거 비용이 300만원이라고 할때 원가는 200만원이고 적혀 있고 모든 공정이 그렇게 … 마지막에 원가얼마 견적금액 얼마 차액으로 얼마이득이고 마진 몇 %인가로 생각을 해야 이해가 쉽지
+   그리고 마진금액은 각자 생각의 차이가 있으니 원가에서 조율해서 적어내려 갈거고”.   (v88 은 공정마다 ‘마진 %’ 칸이었다 — 금액으로 바꿨다.)
+   · 공정 줄 = 공정 | 원가 [칸] | 견적 금액. 원가 칸에는 단가표 원가로 계산한 값이 적혀 있고, 실장이 실제로 들어갈 돈에 맞게 고쳐 적는다(E.costOv[공정] = 금액 · 견적 금액은 그대로 · ↺ 되돌림).
+     고쳐 적을 때의 견적 금액을 같이 적어 두고(E.costAt) 그 뒤 견적 금액이 바뀌면 칸을 주황으로 알린다(원가를 다시 보라고). v88 에서 % 로 고쳐 둔 것(E.mgOv)은 그대로 읽는다.
+   · 합계 아래 = 원가 합계 · 견적 금액(VAT 별도) · 차액(이득) · 마진 %.
+   · 실장 화면 = 로그인해서 서버가 원가표를 내려 줬을 때만(COST_ON) · 관리자 화면 = 늘. ‘원가 가리기’로 감출 수 있다(고객과 같이 볼 때 · 그 기기에 기억).
+   · 저장할 때 E.mg(견적 금액 · 원가 · 마진율 · 고친 공정 수)를 같이 적어 회사 저장소 목록에서 견적마다 보인다. 고객 견적서 · 인쇄 · 엑셀에는 나가지 않는다. */
 const mgCan = () => STAFF_DATA ? COST_ON : isAdmin;
 const mgHidden = () => { try { return localStorage.getItem("sido_mg_hide") === "1" } catch (e) { return false } };
 const mgPct = v => (Math.round(v * 1000) / 10).toFixed(1);
-function mgRow(p) {                                   // 공정 줄 안에 들어가는 마진 칸: [ 28.1 ]% (↺) — 마우스를 올리면 마진 금액·실공사비
-  const b = R.byProc[p]; if (!b || !(b.amt > 0)) return ""; const mg = b.amt - b.cost, r0 = (b.amt - (b.cost0 ?? b.cost)) / b.amt;
-  return `<span class="mgi${b.ov ? " ov" : ""}" title="마진 ${won(Math.round(mg))}원 · 실공사비 ${won(Math.round(b.cost))}원${b.ov ? " · 고치기 전 " + mgPct(r0) + "%" : ""}">${b.ov ? `<button type="button" data-mgauto="${p}" title="계산한 값 ${mgPct(r0)}%로 되돌립니다" aria-label="${PROC_LABEL[p]} 마진 되돌리기">↺</button>` : ""}<input type="number" step="0.5" min="-100" max="99" inputmode="decimal" data-mgov="${p}" value="${b.ov ? mgPct(mg / b.amt) : ""}" placeholder="${mgPct(r0)}" aria-label="${PROC_LABEL[p]} 마진율 %">%</span>`;
+const numIn = s => { const v = String(s ?? "").replace(/[^\d]/g, ""); return v === "" ? null : +v };   // "2,000,000원" → 2000000 · 숫자가 없으면 null
+const mgStale = p => { const b = R.byProc[p], a = (E.costAt || {})[p]; return !!(b && b.ov && (E.costOv || {})[p] !== undefined && a !== undefined && Math.abs(+a - b.amt) >= 1) };   // 원가를 고쳐 적은 뒤 그 공정의 견적 금액이 바뀌었다
+function mgRow(p) {                                   // 공정 줄의 원가 칸: (↺) [ 2,000,000 ] — 마우스를 올리면 차액 · 마진 %
+  const b = R.byProc[p]; if (!b || !(b.amt > 0)) return '<span class="mgi"></span>';
+  const c = Math.round(b.cost), c0 = Math.round(b.cost0 ?? b.cost), gap = b.amt - c, st = mgStale(p);
+  const tip = `${gap < 0 ? "손해" : "차액"} ${won(Math.abs(gap))}원 · 마진 ${mgPct(gap / b.amt)}%${b.ov ? ` · 계산한 원가 ${won(c0)}원` : ""}${st ? ` · 원가를 적은 뒤 견적 금액이 바뀌었습니다 (그때 ${won(E.costAt[p])}원) — 원가를 다시 확인하세요` : ""}`;
+  return `<span class="mgi${b.ov ? " ov" : ""}${st ? " stale" : ""}" title="${tip}">${b.ov ? `<button type="button" data-mgauto="${p}" title="계산한 원가 ${won(c0)}원으로 되돌립니다" aria-label="${PROC_LABEL[p]} 원가 되돌리기">↺</button>` : ""}<input type="text" inputmode="numeric" autocomplete="off" data-costov="${p}" data-c0="${c0}" value="${won(c)}" aria-label="${PROC_LABEL[p]} 원가"></span>`;
 }
-function mgTotal() {                                  // 합계 아래: 실공사비 · 마진 합계 · 안내 (관리자 화면은 아래에 원래 있던 마진 막대가 합계를 보여 주므로 안내만)
-  const nov = PROCS.filter(p => R.byProc[p] && R.byProc[p].ov).length, zeroL = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)), zero = zeroL.length, zeroN = [...new Set(zeroL.map(l => custName(l.name)))], adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
-  return `<div class="mgbox">${STAFF_DATA ? `<div class="srow sub"><span>실공사비</span><span>${won(Math.round(R.cost))}</span></div><div class="srow"><span>마진 <small class="note">기업이윤 포함</small></span><b>${won(Math.round(R.net - R.cost))} · ${R.net ? mgPct(R.margin) + "%" : "-"}</b></div>` : ""}
-    <div class="note"><b>마진 %</b> 칸을 고치면 그 공정 마진만 바뀝니다 (판매 금액은 그대로). <b>고객 견적서에는 안 나갑니다.</b>${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-mgauto="*">↺ 모두 되돌리기</button>` : ""}</div>
-    <div class="mgall"><span>모든 공정을</span><input id="mgAll" type="number" step="0.5" min="-100" max="99" inputmode="decimal" placeholder="예: 30" aria-label="모든 공정의 마진율 %"><span>% 로</span><button type="button" class="btn sm" data-mgall>맞추기</button></div>
-    ${STAFF_DATA && zero ? `<div class="note down" style="margin-top:4px" title="${esc(zeroN.join(" · "))}">원가가 없는 줄 ${zero}개 (${esc(zeroN.slice(0, 2).join(" · "))}${zeroN.length > 2 ? " 외" : ""}) — 그만큼 마진이 높게 보입니다.</div>` : ""}
-    ${adm ? `<div class="note" style="margin-top:6px">실장 화면에도 공정별 마진이 보입니다: <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button><br><span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</div>` : ""}</div>`;
+function mgTotal() {                                  // 합계 아래: 원가 합계 · 견적 금액 · 차액(이득) · 마진 % · 안내
+  const ovs = PROCS.filter(p => R.byProc[p] && R.byProc[p].ov), nov = ovs.length, nst = ovs.filter(mgStale).length, zeroL = R.lines.filter(l => l.amt > 0 && !(l.cost > 0)), zero = zeroL.length, zeroN = [...new Set(zeroL.map(l => custName(l.name)))], adm = !STAFF_DATA && SRV && SRV.me && SRV.me.role === "admin", h = (SRV && SRV.costHead) || null;
+  const gap = Math.round(R.net - R.cost), neg = gap < 0;
+  return `<div class="mgbox"><div class="mgq">
+    <div><small>원가 합계</small><b>${won(Math.round(R.cost))}</b></div>
+    <div><small>견적 금액 <i>VAT 별도</i></small><b>${won(R.net)}</b></div>
+    <div class="gain${neg ? " neg" : ""}"><small>${neg ? "차액 (손해)" : "차액 (이득)"}</small><b>${neg ? "−" : ""}${won(Math.abs(gap))}</b></div>
+    <div class="gain${neg ? " neg" : ""}"><small>마진</small><b>${R.net ? mgPct(R.margin) + "%" : "-"}</b></div></div>
+    <div class="note">공정 줄의 <b>원가</b> 칸은 실제로 들어갈 돈에 맞게 고쳐 적습니다 (견적 금액은 그대로). <b>고객 견적서에는 안 나갑니다.</b>${nov ? ` <b>고친 공정 ${nov}곳</b> <button type="button" class="btn ghost sm" data-mgauto="*">↺ 모두 계산한 원가로</button>` : ""}</div>
+    ${nst ? `<div class="note down" style="margin-top:4px">원가를 적은 뒤 견적 금액이 바뀐 공정 ${nst}곳 (주황 칸) — 원가를 다시 확인하세요.</div>` : ""}
+    ${STAFF_DATA && zero ? `<div class="note down" style="margin-top:4px" title="${esc(zeroN.join(" · "))}">원가가 없는 줄 ${zero}개 (${esc(zeroN.slice(0, 2).join(" · "))}${zeroN.length > 2 ? " 외" : ""}) — 그만큼 이득이 많게 보입니다.</div>` : ""}
+    ${adm ? `<div class="note" style="margin-top:6px">실장 화면에도 공정별 원가가 보입니다: <b>${h ? (h.on ? "켜짐" : "꺼짐") : "확인 중"}</b>${h ? ` <button type="button" class="btn sm" data-coston="${h.on ? 0 : 1}">${h.on ? "실장에게 보이지 않게 끄기" : "실장에게 보여 주기"}</button><br><span class="note">원가표 품목 ${h.n}개${h.at ? " · 올린 때 " + esc(h.at) : ""}</span>` : ""}</div>` : ""}</div>`;
 }
-function mgNote() {                                   // 마진이 안 보일 때 까닭 한 줄 (실장 화면 · 회사 주소로 연 화면에서만)
+function mgNote() {                                   // 원가가 안 보일 때 까닭 한 줄 (실장 화면 · 회사 주소로 연 화면에서만)
   if (!STAFF_DATA || !SRV || COST_ON) return "";
-  return `<div class="note" style="margin-top:8px">공정별 마진은 ${SRV.me && SRV.me.role === "staff" ? "관리자가 원가표를 올려 두면(관리자 화면을 한 번 열면)" : SRV.down ? "회사 컴퓨터가 켜져 있을 때 이 기기로 한 번 들어온 뒤부터" : "로그인하면"} 보입니다.</div>`;
+  return `<div class="note" style="margin-top:8px">공정별 원가 · 차액은 ${SRV.me && SRV.me.role === "staff" ? "관리자가 원가표를 올려 두면(관리자 화면을 한 번 열면)" : SRV.down ? "회사 컴퓨터가 켜져 있을 때 이 기기로 한 번 들어온 뒤부터" : "로그인하면"} 보입니다.</div>`;
 }
 function mgSnap() { if (mgCan() && R.net > 0) E.mg = { net: R.net, cost: Math.round(R.cost), m: Math.round(R.margin * 1000) / 1000, ov: Object.keys(E.mgOv || {}).length + Object.keys(E.costOv || {}).length } }   // 저장할 때: 이 견적의 마진 요약 (회사 저장소 목록에 보인다)
 function costShown() { R = compute(); renderSummary() }
@@ -1553,19 +1565,24 @@ async function costSync() {                           // 실장: 서버가 공�
     } else if (SRV.me && SRV.me.role === "admin" && D.catalog.some(i => +i.cost > 0)) { const tb = costTable(); let h = await srv("GET", "/api/costs"); if (h && h.v !== tb.v) h = await srv("PUT", "/api/costs", tb); SRV.costHead = h; renderSummary() }
   } catch (e) { }
 }
-document.addEventListener("change", ev0 => {          // 공정의 마진율(%)을 고쳐 적는다 (비우면 계산한 값)
-  const el = ev0.target; if (!el.dataset || el.dataset.mgov === undefined) return; const pk = el.dataset.mgov, v = el.value.trim();
-  E.mgOv = E.mgOv || {}; if (v === "" || !isFinite(+v)) delete E.mgOv[pk]; else E.mgOv[pk] = Math.round(Math.max(-1, Math.min(0.99, +v / 100)) * 1000) / 1000;
-  if (E.costOv) { delete E.costOv[pk]; if (!Object.keys(E.costOv).length) delete E.costOv } if (!Object.keys(E.mgOv).length) delete E.mgOv;
+document.addEventListener("input", ev0 => {           // 원가 칸: 치는 대로 천 단위 쉼표
+  const el = ev0.target; if (!el.dataset || el.dataset.costov === undefined) return; const n = numIn(el.value); el.value = n === null ? "" : won(n);
+});
+document.addEventListener("focusin", ev0 => { const el = ev0.target; if (el.dataset && el.dataset.costov !== undefined) setTimeout(() => { try { el.select() } catch (e) { } }, 0) });   // 누르면 통째로 골라져 바로 새 금액을 친다
+document.addEventListener("keydown", ev0 => { const el = ev0.target; if (ev0.key === "Enter" && el.dataset && el.dataset.costov !== undefined) el.blur() });
+document.addEventListener("change", ev0 => {          // 공정의 원가를 고쳐 적는다 (비우거나 계산한 값과 같으면 계산한 값으로)
+  const el = ev0.target; if (!el.dataset || el.dataset.costov === undefined) return; const pk = el.dataset.costov, n = numIn(el.value), c0 = +el.dataset.c0, b = R.byProc[pk];
+  E.costOv = E.costOv || {}; E.costAt = E.costAt || {};
+  if (n === null || n === c0) { delete E.costOv[pk]; delete E.costAt[pk] } else { E.costOv[pk] = n; E.costAt[pk] = b ? b.amt : 0 }
+  if (E.mgOv) { delete E.mgOv[pk]; if (!Object.keys(E.mgOv).length) delete E.mgOv }
+  for (const k of ["costOv", "costAt"]) if (!Object.keys(E[k]).length) delete E[k];
   costShown(); save();
 });
 document.addEventListener("click", async ev0 => {
   const t0 = ev0.target; if (!t0.closest) return; const a = t0.closest("[data-mgauto]"), o = t0.closest("[data-coston]"), hd = t0.closest("[data-mghide]");
-  if (a) { const pk = a.dataset.mgauto; for (const k of ["mgOv", "costOv"]) if (E[k]) { if (pk === "*") delete E[k]; else { delete E[k][pk]; if (!Object.keys(E[k]).length) delete E[k] } } costShown(); save(); return }
+  if (a) { const pk = a.dataset.mgauto; for (const k of ["mgOv", "costOv", "costAt"]) if (E[k]) { if (pk === "*") delete E[k]; else { delete E[k][pk]; if (!Object.keys(E[k]).length) delete E[k] } } costShown(); save(); return }
   if (hd) { try { if (mgHidden()) localStorage.removeItem("sido_mg_hide"); else localStorage.setItem("sido_mg_hide", "1") } catch (e) { } renderSummary(); return }
-  if (t0.closest("[data-mgall]")) { const el = $("#mgAll"), v = el ? el.value.trim() : ""; if (v === "" || !isFinite(+v)) { toast("맞출 마진율(%)을 숫자로 적어 주세요. 예: 30"); return }   // 모든 공정의 마진을 한 번에 (실장이 ‘이 현장은 30%’처럼 생각할 때)
-    const r = Math.round(Math.max(-1, Math.min(0.99, +v / 100)) * 1000) / 1000; E.mgOv = {}; for (const pk of PROCS) if (R.byProc[pk] && R.byProc[pk].amt > 0) E.mgOv[pk] = r; delete E.costOv; costShown(); save(); toast(`모든 공정의 마진을 ${mgPct(r)}%로 맞췄습니다. 공정마다 다시 고칠 수 있고, ‘↺ 모두 되돌리기’로 계산한 값으로 돌아갑니다.`); return }
-  if (o) { try { SRV.costHead = await srv("POST", "/api/costs", { on: o.dataset.coston === "1" }); toast(SRV.costHead.on ? "실장 화면에 공정별 마진을 보여 줍니다. 실장이 화면을 새로 열면 보입니다." : "실장 화면에서 공정별 마진을 껐습니다. 실장이 화면을 새로 열면 사라집니다.") } catch (e) { toast("바꾸지 못했습니다. " + (e && e.msg || "")) } renderSummary() }
+  if (o) { try { SRV.costHead = await srv("POST", "/api/costs", { on: o.dataset.coston === "1" }); toast(SRV.costHead.on ? "실장 화면에 공정별 원가 · 차액을 보여 줍니다. 실장이 화면을 새로 열면 보입니다." : "실장 화면에서 공정별 원가 · 차액을 껐습니다. 실장이 화면을 새로 열면 사라집니다.") } catch (e) { toast("바꾸지 못했습니다. " + (e && e.msg || "")) } renderSummary() }
 });
 function checkCard(steps) {
   const cs = estCheck(steps), n = cs.filter(c => c.lv < 3).length, mark = ["", "⚠", "❓", "ℹ"], col = ["", "var(--warn)", "var(--warn)", "var(--muted,#667)"];
@@ -3743,24 +3760,24 @@ function cmpSummary() {                              // 합계 칸: 비교견적
 function renderSummary() {                             // (v89) 합계 칸은 화면보다 길면 안에서 스크롤된다 → 다시 그려도 보던 자리를 지킨다
   const b0 = document.querySelector("#summary>.bd"), st0 = b0 ? b0.scrollTop : 0; renderSummary1(); if (st0) { const b1 = document.querySelector("#summary>.bd"); if (b1) b1.scrollTop = st0 } }
 function renderSummary1() {
-  const tgt = D.settings.targetMargin ?? 0.2, m = R.margin, mgc = mgCan(), mgs = mgc && !mgHidden();   // (v88) mgs = 공정마다 마진을 같이 보여 준다
-  $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span>${mgc ? `<button type="button" class="btn ghost sm" data-mghide title="고객과 화면을 같이 볼 때 마진을 감춥니다 (이 기기에 기억)">${mgs ? "마진 가리기" : "마진 보기"}</button>` : ""}<span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
-   ${mgs ? '<div class="srow sub mgh"><span></span><span class="mgi">마진 %</span><span class="pa">금액</span></div>' : ""}
+  const tgt = D.settings.targetMargin ?? 0.2, m = R.margin, mgc = mgCan(), mgs = mgc && !mgHidden();   // (v88) mgs = 공정마다 원가를 같이 보여 준다
+  document.body.classList.toggle("mgon", mgs);        // (v90) 원가 칸이 들어가면 합계 칸을 조금 넓힌다
+  $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span>${mgc ? `<button type="button" class="btn ghost sm" data-mghide title="고객과 화면을 같이 볼 때 원가 · 차액을 감춥니다 (이 기기에 기억)">${mgs ? "원가 가리기" : "원가 보기"}</button>` : ""}<span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
+   ${mgs ? '<div class="srow sub mgh"><span>공정</span><span class="mgi">원가</span><span class="pa">견적 금액</span></div>' : ""}
    ${PROCS.filter(p => R.byProc[p]).map(p => `<div class="srow sub${mgs ? " mg" : ""}"><span>${PROC_LABEL[p]}</span>${mgs ? mgRow(p) : ""}<span class="pa">${won(R.byProc[p].amt)}</span></div>`).join("")}
-   <div class="srow" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px"><span>공사원가</span><b>${won(R.sum)}</b></div>
+   <div class="srow${mgs ? " mg mgsum" : ""}" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px"><span${mgs ? ' title="견적서의 ‘공사원가’ (기업이윤을 더하기 전의 공정 금액 합계)"' : ""}>${mgs ? "공정 합계" : "공사원가"}</span>${mgs ? `<span class="mgi sum" title="공정별 원가의 합계">${won(Math.round(R.cost))}</span>` : ""}<b class="pa">${won(R.sum)}</b></div>
    <div class="srow"><span>기업이윤${isAdmin ? ` <span class="cost">${+E.biz || 0}%</span>` : ""}</span><span>${won(R.biz)}</span></div>
    <div class="srow sub"><span>절사</span><span>${won(R.cut)}</span></div>
    <div class="srow"><span>공사비 합계 (VAT 별도)</span><b>${won(R.net)}</b></div>
    <div class="srow sub"><span>부가세 10%</span><span>${won(R.vat)}</span></div>
    <div class="srow total"><span>총 합계</span><span>${won(R.total)}원</span></div>
    ${mgs ? mgTotal() : mgNote()}
-   ${(bd => bd._ok && Math.abs(R.sum - bd._sum) >= 1 ? `<div class="note" style="text-align:right;margin-top:4px">수량·종류를 고쳐서 ${dltChip(R.sum - bd._sum, "자동 계산보다")} <small>(공사원가 기준)</small></div>` : "")(D.stepLines ? baseAmts() : {})}
+   ${(bd => bd._ok && Math.abs(R.sum - bd._sum) >= 1 ? `<div class="note" style="text-align:right;margin-top:4px">수량·종류를 고쳐서 ${dltChip(R.sum - bd._sum, "자동 계산보다")} <small>(${mgs ? "공정 합계" : "공사원가"} 기준)</small></div>` : "")(D.stepLines ? baseAmts() : {})}
    ${cmpSummary()}
    <div class="note" style="text-align:right">평당 ${won(R.net / (+E.py || 1))}원 · ㎡당 ${won(R.net / (R.S.supplyM2 || 1))}원 (VAT 별도)</div>
    ${STAFF_DATA ? staffNote() : `<div class="meter ${R.net ? (m >= tgt ? "good" : "low") : ""}"><div class="note">예상 마진율 (기업이윤 포함)</div><div class="big">${R.net ? pct(m) : "-"}</div>
      <div class="bar"><i style="width:${Math.max(0, Math.min(100, m / 0.5 * 100))}%"></i><b style="left:${tgt / 0.5 * 100}%"></b></div>
-     <div class="note" style="margin-top:6px">${!R.net ? "공사를 체크하면 계산됩니다." : m >= tgt ? `목표 ${pct(tgt)} 이상입니다.` : `목표 ${pct(tgt)}보다 낮습니다. 직접 입력한 단가나 수량을 확인하세요.`}</div>
-     ${isAdmin ? `<div class="note cost" style="margin-top:4px">원가 ${won(R.cost)}원 · 이익 ${won(R.net - R.cost)}원</div>` : ""}</div>`}
+     <div class="note" style="margin-top:6px">${!R.net ? "공사를 체크하면 계산됩니다." : m >= tgt ? `목표 ${pct(tgt)} 이상입니다.` : `목표 ${pct(tgt)}보다 낮습니다. 직접 입력한 단가나 수량을 확인하세요.`}</div></div>`}
    ${R.fzDiff ? `<p class="note down" style="margin-top:8px">저장할 때의 단가로 계산 중입니다. 지금 단가표와 다른 품목 ${R.fzDiff}건. <button class="btn sm" data-act="reprice">현재 단가로 다시 계산</button></p>` : ""}
    ${isAdmin && !STAFF_DATA ? (z => z.length ? `<p class="note down cost" style="margin-top:8px">원가가 없는 줄 ${z.length}개 — 마진이 실제보다 높게 보입니다: ${esc(z.slice(0, 5).map(l => custName(l.docName || aliasOf(l.name))).join(", "))}${z.length > 5 ? " 외" : ""}</p>` : "")(R.lines.filter(l => l.amt > 0 && !(l.cost > 0)))
      + (z => z.length ? `<p class="note down cost" style="margin-top:6px">마진이 3% 아래인 줄 ${z.length}개: ${esc(z.slice(0, 5).map(l => custName(l.docName || aliasOf(l.name)) + " " + Math.round((1 - l.cost / l.amt) * 1000) / 10 + "%").join(", "))}${z.length > 5 ? " 외" : ""}</p>` : "")(R.lines.filter(l => l.amt > 0 && l.cost > 0 && l.cost > l.amt * 0.97 && !/식대/.test(l.name))) : ""}
@@ -3990,18 +4007,26 @@ document.head.insertAdjacentHTML("beforeend", `<style>
 .plantop{position:sticky;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:6;background:var(--panel);border-bottom:2px solid var(--line);border-top:0!important;box-shadow:0 6px 10px -8px rgba(0,0,0,.35)}.plantop .bd{padding-top:0}.planside{max-height:46vh;overflow:auto}
 .howto{font-size:12px;background:var(--soft);border-radius:8px;padding:6px 10px;margin-bottom:8px}.howto ol{margin:2px 0 0;padding-left:18px}
 .inforow{display:grid;grid-template-columns:minmax(250px,330px) minmax(0,1fr);gap:18px;align-items:start}@media (max-width:1000px){.inforow{grid-template-columns:minmax(0,1fr)}}
-.srow.mg{align-items:center}.srow.mg>span:first-child,.srow.mgh>span:first-child{flex:1 1 auto;min-width:0}
-.srow .pa{min-width:78px;text-align:right}
-.mgi{display:inline-flex;align-items:center;gap:2px;font-size:12px;color:var(--muted);white-space:nowrap}
-.srow.mgh{font-size:11px;padding-bottom:0}.srow.mgh .mgi{width:64px;justify-content:flex-end}
-.mgi input{width:48px;padding:1px 4px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:12px;text-align:right;background:transparent;color:var(--ink);-moz-appearance:textfield}
-.mgi input::-webkit-outer-spin-button,.mgi input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.mgi input::placeholder{color:var(--muted);opacity:.8}
+.srow.mg{align-items:center}.srow.mg>span:first-child,.srow.mgh>span:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow .pa{min-width:82px;text-align:right}
+.mgi{display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;width:104px;flex:0 0 auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.srow.mgh{font-size:11px;padding-bottom:0}.srow.mgh .mgi{font-size:11px;padding-right:6px}
+.mgi input{width:86px;height:21px;padding:1px 5px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:13px;font-variant-numeric:tabular-nums;text-align:right;background:transparent;color:var(--ink)}
+.mgi input:focus{outline:2px solid var(--accent);outline-offset:0;background:var(--panel)}
 .mgi.ov input{border-color:var(--accent);background:rgba(46,107,87,.12);font-weight:700}
+.mgi.stale input{border-color:#c77700;background:rgba(199,119,0,.14)}
 .mgi button{border:0;background:none;cursor:pointer;color:var(--accent);padding:0 1px;font-size:13px;line-height:1}
-.mgall{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;color:var(--muted)}.mgall input{width:58px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:12px;text-align:right;background:var(--surface,#fff);color:var(--ink)}
-.mgbox{margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(46,107,87,.07);border:1px solid rgba(46,107,87,.22)}
-.srow.mg{padding-top:2px;padding-bottom:2px}.mgi input{height:21px}
+.mgi.sum{padding-right:6px;color:var(--ink);font-weight:700}
+.srow.mgsum>b.pa{font-weight:700}
+.mgbox{margin-top:8px;padding:7px 11px;border-radius:10px;background:rgba(46,107,87,.07);border:1px solid rgba(46,107,87,.22)}
+.mgq{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;margin-bottom:5px}
+.mgq>div{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.mgq small{font-size:11px;color:var(--muted)}.mgq small i{font-style:normal;opacity:.85}
+.mgq b{font-size:15px;font-variant-numeric:tabular-nums}
+.mgq .gain{border-top:1px solid rgba(46,107,87,.25);padding-top:4px}
+.mgq .gain b{font-size:17px;color:var(--accent)}.mgq .gain.neg b{color:#c0392b}
+@media (min-width:1301px){body.mgon .est3.wiz{grid-template-columns:210px minmax(0,1fr) 336px}}
+.srow.mg{padding-top:2px;padding-bottom:2px}
 .cmpsum.empty{padding:5px 9px}
 @media (min-width:1301px){.est3.wiz .sumslot{align-self:stretch}
 .est3.wiz #summary{display:flex;flex-direction:column;max-height:calc(100vh - 78px - env(safe-area-inset-top,0px))}
@@ -5905,7 +5930,7 @@ function renderSrv() {                               // ‘저장된 견적’ �
   for (const s of stf) if (s.active !== false) grp(s.id, s.name);
   for (const x of L) grp(x.owner, x.owner === "admin" ? "관리자" : x.staffName || x.owner).rows.push(x);
   const groups = [...G.values()].sort((a, b) => (a.id === "admin") - (b.id === "admin") || String(a.name).localeCompare(String(b.name), "ko")), who = SRV.listWho && G.has(SRV.listWho) ? SRV.listWho : "";
-  const row = x => `<li data-own="${esc(x.owner)}" data-q="${esc([x.client, x.site, x.region, x.manager, x.staffName].filter(Boolean).join(" ").toLowerCase())}"><b>${esc(x.client || "(고객명 없음)")}</b><span class="note">${esc(x.site || "")}</span><span class="chip admin">${esc(x.owner === "admin" ? "관리자" : x.staffName)}</span>${x.draft ? '<span class="chip warn" title="‘저장’이 아니라 ‘임시저장’으로 올라온 견적입니다(쓰는 중)">임시저장</span>' : ""}<span class="chip">${esc(x.kind)} v${esc(x.ver)}</span><span class="chip">${won(x.total || 0)}원</span>${x.mg && x.mg.net ? `<span class="chip" title="저장할 때의 마진 (기업이윤 포함) · 실공사비 ${won(x.mg.cost)}원${x.mg.ov ? " · 실장이 공정 " + x.mg.ov + "곳의 마진을 고침" : ""}">마진 ${mgPct(x.mg.m)}%${x.mg.ov ? " ✎" : ""}</span>` : ""}<span class="note">${esc(fmtAt(x.savedAt))}</span>${x.savedBy && x.savedBy !== x.staffName ? `<span class="chip" title="마지막으로 저장한 사람">${esc(x.savedBy)} 저장</span>` : ""}${moved(x) ? '<span class="chip warn" title="이 기기에서 마지막으로 열거나 저장한 뒤에 다른 곳(실장 또는 다른 기기)에서 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · ‘열기’로 최신</span>' : ""}<span class="spacer"></span>
+  const row = x => `<li data-own="${esc(x.owner)}" data-q="${esc([x.client, x.site, x.region, x.manager, x.staffName].filter(Boolean).join(" ").toLowerCase())}"><b>${esc(x.client || "(고객명 없음)")}</b><span class="note">${esc(x.site || "")}</span><span class="chip admin">${esc(x.owner === "admin" ? "관리자" : x.staffName)}</span>${x.draft ? '<span class="chip warn" title="‘저장’이 아니라 ‘임시저장’으로 올라온 견적입니다(쓰는 중)">임시저장</span>' : ""}<span class="chip">${esc(x.kind)} v${esc(x.ver)}</span><span class="chip">${won(x.total || 0)}원</span>${x.mg && x.mg.net ? `<span class="chip" title="저장할 때의 값 (VAT 별도 · 기업이윤 포함) · 견적 금액 ${won(x.mg.net)}원 − 원가 ${won(x.mg.cost)}원${x.mg.ov ? " · 실장이 공정 " + x.mg.ov + "곳의 원가를 고쳐 적음" : ""}">원가 ${won(x.mg.cost)} · 차액 ${won(x.mg.net - x.mg.cost)} (${mgPct(x.mg.m)}%)${x.mg.ov ? " ✎" : ""}</span>` : ""}<span class="note">${esc(fmtAt(x.savedAt))}</span>${x.savedBy && x.savedBy !== x.staffName ? `<span class="chip" title="마지막으로 저장한 사람">${esc(x.savedBy)} 저장</span>` : ""}${moved(x) ? '<span class="chip warn" title="이 기기에서 마지막으로 열거나 저장한 뒤에 다른 곳(실장 또는 다른 기기)에서 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · ‘열기’로 최신</span>' : ""}<span class="spacer"></span>
       <button class="btn sm" data-srvopen="${esc(x.owner)}|${esc(x.id)}">열기</button><button class="btn sm danger" data-srvdel="${esc(x.owner)}|${esc(x.id)}" title="지우면 아래 ‘지운 견적’으로 옮겨집니다 (되살릴 수 있습니다)">삭제</button></li>`;
   const head = g => { const dr = g.rows.filter(x => x.draft).length; return `<li data-grp="${esc(g.id)}" style="background:rgba(127,127,127,.14);border-radius:8px;margin-top:6px"><b>${esc(g.name)}</b>${lgOf[g.id] ? `<span class="note">아이디 ${esc(lgOf[g.id])}</span>` : ""}<span class="chip">견적 ${g.rows.length}건</span>${dr ? `<span class="chip warn">임시저장 ${dr}건</span>` : ""}<span class="note">${g.rows.length ? "마지막 저장 " + esc(fmtAt(g.rows[0].savedAt)) : "아직 저장한 견적이 없습니다"}</span></li>` };
   box.innerHTML = `<h3 style="font-size:14px;margin:0 0 6px">회사 저장소 <span class="note">전체 실장 견적 ${L.length}건 · 실장별로 나눠 보여 줍니다</span></h3>
