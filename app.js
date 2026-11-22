@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-22.93"
+const APP_VER = "2026-11-22.94"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
@@ -3260,6 +3260,49 @@ function stepStats(st) {
   const amt = R.lines.filter(l => st.procs.includes(l.proc)).reduce((a, l) => a + l.amt, 0);
   return { on: on + ex, amt };
 }
+/* ───── (v94) 공정별로 나눠 보기 ─────
+   사용자(2026-11-22): “가설공사로 나뉘는 곳과 철거가 나뉘는 곳을 그리고 전체적으로 해당 공사에서 나뉘는 곳이 명확해야지 실장들이 보고 견적금액 및 원가를 변경하지
+   위에 가설 밑에 가설 중간에 철거 이런식으로 나눠져있으면 사용하기 불편해 모든 공정들이 공정별로 나눠서도 볼 수 있어야지”.
+   ① 단계 화면(procRows): 묶음 카드를 ‘견적 합계’의 공정별로 모으고 공정 이름 줄(procHead)로 가른다 — ‘보양·철거’ = 가설공사 묶음들 → 철거공사 묶음들. 그 묶음 안에 다른 공정으로 집계되는 줄(식대 → 기타·마감 등)이 있으면 알려 준다.
+   ② ‘공정별로 보기’(procView): 견적 합계의 공정마다 무엇이 들어 있는지(줄 · 수량 · 금액 · 어느 단계)를 한 화면에 — 원가 칸도 여기서 고친다(같은 칸). 견적 합계 칸의 공정 이름 · 단계 화면의 공정 이름 줄에서 연다.
+   줄마다의 원가는 보여 주지 않는다(공정 합계만 — 전과 같다). 고객 견적서에는 아무것도 달라지지 않는다. */
+let PROC_MAP = null, PROC_MAPN = -1, PROC_VIEW = null;
+function lineProc(l) { const r = R.lines.find(x => x.lid === l.id); if (r) return r.proc; if (!PROC_MAP || PROC_MAPN !== D.catalog.length) { PROC_MAP = new Map(D.catalog.map(i => [i.name, i.proc])); PROC_MAPN = D.catalog.length } return PROC_MAP.get(l.items[lnState(l).alt || 0]) || PROC_MAP.get(l.items[0]) || "" }
+function catProc(c, st) { const n = {}, own = (st && st.procs) || []; for (const id of c.lines) { const l = lineById(id); if (!l || l.gone || l.dead) continue; const q = lineProc(l); if (q) n[q] = (n[q] || 0) + (lnState(l).on ? 3 : 1) }   // 켜진 줄을 더 무겁게
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || (own.includes(b) ? 1 : 0) - (own.includes(a) ? 1 : 0) || PROCS.indexOf(a) - PROCS.indexOf(b))[0] || "" }
+function procHead(st, pr, cats) {
+  const ids = new Set(cats.flatMap(c => c.lines)), amt = R.lines.filter(r => r.lid && ids.has(r.lid) && r.proc === pr).reduce((a, r) => a + (r.amt || 0), 0), tot = R.byProc[pr] ? R.byProc[pr].amt : 0, oth = {};
+  for (const r of R.lines) if (r.lid && ids.has(r.lid) && r.proc !== pr && r.amt > 0) (oth[r.proc] = oth[r.proc] || []).push(custName(aliasOf(r.name)));
+  const on = Object.entries(oth).map(([q, ns]) => { const u = [...new Set(ns)]; return `${esc(u.slice(0, 2).join(" · "))}${u.length > 2 ? " 외" : ""} → ${esc(PROC_LABEL[q] || q)}` }).join(" / ");
+  return `<div class="prochd"><b>${esc(PROC_LABEL[pr] || pr)}</b><span class="pa">${amt > 0 ? `아래 묶음 ${won(amt)}원` : "아직 켜진 공사 없음"}${amt > 0 && Math.abs(tot - amt) >= 1 ? ` <small>· 견적 합계의 ‘${esc(PROC_LABEL[pr] || pr)}’은 ${won(tot)}원 (다른 단계의 줄 포함)</small>` : ""}</span><button type="button" class="btn ghost sm" data-procview="${esc(pr)}" title="이 공정에 들어 있는 줄을 한 화면에 봅니다">공정별로 보기</button>${on ? `<div class="note">아래 묶음의 줄 가운데 ${on} 공정으로 집계됩니다.</div>` : ""}</div>`;
+}
+function procRows(st) {
+  const gp = new Map(); for (const c of catShown(st)) { const q = catProc(c, st) || (st.procs || [])[0] || ""; (gp.get(q) || gp.set(q, []).get(q)).push(c) }
+  const ord = q => (PROCS.indexOf(q) + 99) % 99;
+  return [...gp.keys()].sort((a, b) => ord(a) - ord(b)).map(q => (q ? procHead(st, q, gp.get(q)) : "") + gp.get(q).map(c => catCard(st, c)).join("")).join("");
+}
+function procViewHtml() {
+  const mgs = mgCan() && !mgHidden(), steps = STEPS(), ps = PROCS.filter(q => R.byProc[q]), si = k => { const i = steps.findIndex(s => s.key === k); return i < 0 ? 99 : i };
+  const sec = q => { const b = R.byProc[q], ls = R.lines.filter(r => r.proc === q && (r.amt > 0 || r.qty > 0)).sort((x, y) => si(x.step) - si(y.step));
+    const row = r => { const gi = steps.findIndex(s => s.key === r.step), at = r.lid ? { lid: r.lid, say: "이 줄입니다." } : r.key ? { key: r.key, say: "이 줄입니다." } : null;
+      return `<tr><td>${esc(custName(r.docName || aliasOf(r.name)))}${r.extra ? ' <small class="note">직접 넣음</small>' : ""}</td><td class="r">${r.qty}${esc(r.unit || "")}</td><td class="r">${won(r.amt)}</td><td class="r">${gi >= 0 ? `<button type="button" class="lk" data-goto="${gi}"${at ? atAttr({ at }) : ""} data-procclose title="그 줄로 가서 고칩니다">${esc(helpCut(steps[gi].label, 9))} ›</button>` : ""}</td></tr>` };
+    return `<section class="pvsec" id="pv_${PROCS.indexOf(q)}"><div class="pvh"><b>${esc(PROC_LABEL[q] || q)}</b><span class="spacer"></span>${mgs ? `<span class="pvamt"><span class="note">원가</span>${mgRow(q)}</span>` : ""}<span class="pvamt"><span class="note">견적 금액</span><b class="pa">${won(b.amt)}</b></span></div><table class="pvt"><tbody>${ls.map(row).join("")}</tbody></table></section>` };
+  return `<div class="card" style="width:min(780px,100%);margin:auto"><div class="hd"><h2>공정별로 보기</h2><span class="note">견적 합계의 공정마다 들어 있는 줄입니다${mgs ? " · 원가 칸은 여기서 고쳐도 같습니다" : ""}</span><span class="spacer"></span><button type="button" class="btn sm" data-procclose>닫기</button></div>
+    <div class="bd">${ps.length ? ps.map(sec).join("") : '<p class="note">아직 켜진 공사가 없습니다.</p>'}<div class="srow" style="border-top:2px solid var(--ink);padding-top:8px"><span>공정 합계 <small class="note">(기업이윤 · 부가세 전)</small></span><b>${won(R.sum)}</b></div>
+    <div class="note" style="margin-top:6px">줄 오른쪽의 단계 이름을 누르면 그 줄로 가서 수량 · 종류를 고칩니다. 고객 견적서에는 이 화면이 나가지 않습니다.</div></div></div>`;
+}
+function procView(pr) {
+  if (pr) PROC_VIEW = pr; if (!PROC_VIEW) return;
+  let box = document.getElementById("procBox"); const st0 = box ? box.scrollTop : -1;
+  if (!box) { document.body.insertAdjacentHTML("beforeend", '<div id="procBox" style="position:fixed;inset:0;z-index:94;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto"></div>'); box = document.getElementById("procBox") }
+  box.innerHTML = procViewHtml();
+  if (st0 >= 0) box.scrollTop = st0; else if (pr && pr !== "*") { const s = document.getElementById("pv_" + PROCS.indexOf(pr)); if (s) box.scrollTop = Math.max(0, s.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 70) }
+}
+function procClose() { const b = document.getElementById("procBox"); if (b) b.remove(); PROC_VIEW = null }
+document.addEventListener("click", ev0 => { const t0 = ev0.target; if (!t0.closest) return;
+  const v = t0.closest("[data-procview]"); if (v) { procView(v.dataset.procview || "*"); return }
+  if (t0.closest("[data-procclose]") || t0.id === "procBox") procClose() });
+document.addEventListener("keydown", ev0 => { if (ev0.key === "Escape" && document.getElementById("procBox") && !(ev0.target.dataset && ev0.target.dataset.costov !== undefined)) procClose() });
 function renderChecklist() {
   document.querySelectorAll(".spottip").forEach(x => x.remove());
   const steps = STEPS(); E.step = Math.min(Math.max(0, E.step || 0), steps.length - 1);
@@ -3279,7 +3322,7 @@ function renderChecklist() {
   if (E.step === steps.length - 1) { renderConfirm(body, steps); return }
   const s = stepStats(st);
   const XA = D.cats && D.cats[st.key] ? catXAssign(st) : null; if (!XA) catXAssign.sk = "";   // (v75) 직접 넣은 줄을 묶음별로
-  const rows = D.cats && D.cats[st.key] ? catShown(st).map(c => catCard(st, c)).join("")
+  const rows = D.cats && D.cats[st.key] ? procRows(st)
     : D.stepLines ? (D.stepLines[st.key] || []).map(lnRow).join("") : (D.packages || []).filter(p => st.pk.includes(p.key)).map(p => pkRow(p, pkAmounts())).join("");
   const xset = new Set(E.extras.filter(x => x.item).map(x => x.item));
   const others = D.catalog.filter(i => st.procs.includes(i.proc) && !USED.has(i.name) && (xset.has(i.name) || (!USEDB.has(nmBase(i.name)) && !HIDE_ITEMS.includes(i.name))));   // 공사 줄에 이미 있는 것과 이름이 같은 품목은 감춘다 (금액이 달라 헷갈리지 않게)
@@ -3856,13 +3899,14 @@ function cmpSummary() {                              // 합계 칸: 비교견적
     + c.map(x => `<div class="srow sub"><span>${esc(aliasOf(x.from))} → ${esc(aliasOf(x.to))}</span><span>${x.diff > 0 ? "+" : "−"}${won(Math.abs(x.diff))}</span></div>`).join("") + "</div>";
 }
 function renderSummary() {                             // (v89) 합계 칸은 화면보다 길면 안에서 스크롤된다 → 다시 그려도 보던 자리를 지킨다
-  const b0 = document.querySelector("#summary>.bd"), st0 = b0 ? b0.scrollTop : 0; renderSummary1(); if (st0) { const b1 = document.querySelector("#summary>.bd"); if (b1) b1.scrollTop = st0 } }
+  const b0 = document.querySelector("#summary>.bd"), st0 = b0 ? b0.scrollTop : 0; renderSummary1(); if (st0) { const b1 = document.querySelector("#summary>.bd"); if (b1) b1.scrollTop = st0 }
+  if (PROC_VIEW && document.getElementById("procBox")) { try { procView() } catch (e) { } } }   // (v94) 열려 있는 ‘공정별로 보기’도 같이
 function renderSummary1() {
   const tgt = D.settings.targetMargin ?? 0.2, m = R.margin, mgc = mgCan(), mgs = mgc && !mgHidden();   // (v88) mgs = 공정마다 원가를 같이 보여 준다
   document.body.classList.toggle("mgon", mgs);        // (v90) 원가 칸이 들어가면 합계 칸을 조금 넓힌다
   $("#summary").innerHTML = `<div class="hd"><h2>견적 합계</h2><span class="spacer"></span>${mgc ? `<button type="button" class="btn ghost sm" data-mghide title="고객과 화면을 같이 볼 때 원가 · 차액을 감춥니다 (이 기기에 기억)">${mgs ? "원가 가리기" : "원가 보기"}</button>` : ""}<span class="chip">${esc(E.info.kind)} v${E.info.ver}</span></div><div class="bd">
-   ${mgs ? '<div class="srow sub mgh"><span>공정</span><span class="mgi">원가</span><span class="pa">견적 금액</span></div>' : ""}
-   ${PROCS.filter(p => R.byProc[p]).map(p => `<div class="srow sub${mgs ? " mg" : ""}"><span>${PROC_LABEL[p]}</span>${mgs ? mgRow(p) : ""}<span class="pa">${won(R.byProc[p].amt)}</span></div>`).join("")}
+   <div class="srow sub mgh"><span><button type="button" class="plk" data-procview="*" title="공정마다 무엇이 들어 있는지 한 화면에 봅니다">공정별로 보기 ›</button></span>${mgs ? '<span class="mgi">원가</span>' : ""}<span class="pa">견적 금액</span></div>
+   ${PROCS.filter(p => R.byProc[p]).map(p => `<div class="srow sub${mgs ? " mg" : ""}"><span><button type="button" class="plk" data-procview="${p}" title="이 공정에 들어 있는 줄 보기">${PROC_LABEL[p]}</button></span>${mgs ? mgRow(p) : ""}<span class="pa">${won(R.byProc[p].amt)}</span></div>`).join("")}
    <div class="srow${mgs ? " mg mgsum" : ""}" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px"><span${mgs ? ' title="견적서의 ‘공사원가’ (기업이윤을 더하기 전의 공정 금액 합계)"' : ""}>${mgs ? "공정 합계" : "공사원가"}</span>${mgs ? `<span class="mgi sum" title="공정별 원가의 합계">${won(Math.round(R.cost))}</span>` : ""}<b class="pa">${won(R.sum)}</b></div>
    <div class="srow"><span>기업이윤${isAdmin ? ` <span class="cost">${+E.biz || 0}%</span>` : ""}</span><span>${won(R.biz)}</span></div>
    <div class="srow sub"><span>절사</span><span>${won(R.cut)}</span></div>
@@ -4129,6 +4173,13 @@ document.head.insertAdjacentHTML("beforeend", `<style>
 .mgi.sum{padding-right:6px;color:var(--ink);font-weight:700}
 .srow.mgsum>b.pa{font-weight:700}
 .mgbox{margin-top:8px;padding:7px 11px;border-radius:10px;background:rgba(46,107,87,.07);border:1px solid rgba(46,107,87,.22)}
+.prochd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:16px 14px 2px;padding:8px 12px;border-left:5px solid var(--accent);background:var(--soft);border-radius:8px}
+.prochd b{font-size:16px}.prochd .pa{margin-left:auto;font-variant-numeric:tabular-nums;font-size:14px}.prochd .pa small{color:var(--muted)}.prochd .note{flex-basis:100%;margin:0}
+.plk{border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline dotted;text-underline-offset:3px}
+.plk:hover{color:var(--accent)}.srow.mgh .plk{color:var(--accent);font-weight:700;text-decoration:none;font-size:12px}
+.pvsec{margin-bottom:16px}.pvh{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--soft);border-left:5px solid var(--accent);border-radius:8px}.pvh b{font-size:15px}.pvamt{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.pvh .pa{min-width:90px;text-align:right;font-variant-numeric:tabular-nums}
+.pvt{width:100%;border-collapse:collapse;font-size:13px;margin-top:2px;table-layout:fixed}.pvt td:nth-child(2){width:84px}.pvt td:nth-child(3){width:112px}.pvt td:nth-child(4){width:176px}.pvt td button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pvt td{padding:4px 6px;border-bottom:1px solid var(--line)}.pvt td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.pvt td:first-child{word-break:keep-all}
+@media (max-width:560px){#procBox{padding:6px!important}.pvh{flex-wrap:wrap}.pvt{font-size:12px}.pvt td{padding:4px 3px}.pvt td:nth-child(2){width:52px}.pvt td:nth-child(3){width:78px}.pvt td:nth-child(4){width:104px}}
 .mgq{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;margin-bottom:5px}
 .mgq>div{display:flex;flex-direction:column;min-width:0;line-height:1.25}
 .mgq small{font-size:11px;color:var(--muted)}.mgq small i{font-style:normal;opacity:.85}
