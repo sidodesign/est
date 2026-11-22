@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-22.97"
+const APP_VER = "2026-11-22.98"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
