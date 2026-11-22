@@ -1,7 +1,8 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-22.91";                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
+const APP_VER = "2026-11-22.92"
+const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
 const deep = o => JSON.parse(JSON.stringify(o));
@@ -170,7 +171,7 @@ const fpKey = l => l.key + "::" + l.name;
 
 /* ---------- 견적 상태 ---------- */
 function blankEst() {
-  return { id: "e" + Date.now(), info: { client: "", site: "", region: "", manager: "", date: new Date().toISOString().slice(0, 10), kind: "가견적", ver: 1 },
+  return { id: "e" + Date.now(), info: { client: "", site: "", region: "", manager: "", date: new Date().toISOString().slice(0, 10), kind: "견적서", ver: 1 },
     py: 33, excl: "", rooms: 3, baths: 2, balconies: 2, level: 10,
     floorItem: D.global.floorOpts[0], paperItem: D.global.paperOpts[0],
     sel: {}, num: {}, ovr: {}, extras: [], dim: {}, ceilH: "", skip: {}, skipW: {}, inc: {}, meas: {}, marks: [], biz: Math.round((D.settings.bizProfit ?? 0.07) * 1000) / 10, memo: "", space: "living", pk: {}, preset: 0, ln: {}, lq: {}, dataVer: BASE.version, dfv: DFV };
@@ -3404,7 +3405,7 @@ function renderInfo() {
     <label class="f">지역<input data-info="region" value="${esc(E.info.region)}" placeholder="부산 해운대구"></label>
     <label class="f">담당 실장<input data-info="manager" value="${esc(E.info.manager)}"></label>
     <label class="f">견적일<input type="date" data-info="date" value="${esc(E.info.date)}"></label>
-    <label class="f">구분<select data-info="kind">${["가견적", "확정 견적", "변경 견적"].map(k => `<option ${E.info.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+    <label class="f">구분<select data-info="kind">${DOC_KINDS.map(k => `<option ${E.info.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select></label>
   </div></div>
   <div class="inforow"><div class="group"><h3>공간</h3><div class="fields">
     <label class="f">공급 평형<span class="in"><select data-e="py">${Array.from({ length: 51 }, (_, i) => i + 15).map(n => `<option value="${n}" ${n === py ? "selected" : ""}>${n}평</option>`).join("")}</select></span></label>
@@ -3805,7 +3806,7 @@ document.addEventListener("click", ev0 => {
   if (a === "backest") show(D.stepLines ? "check" : "est");
   if (a === "print") { const de = DOC_EDIT; if (de) DOC_EDIT = false; renderDoc(); if (!printFile()) window.print(); if (de) { DOC_EDIT = true; renderDoc() } }
   if (a === "nextver") { E.info.ver = (+E.info.ver || 1) + 1; renderDoc(); save(); toast(`v${E.info.ver}로 올렸습니다.`) }
-  if (a === "export") snapshotPrices(), save(), download(`견적_${E.info.client || "고객"}_${E.info.kind}v${E.info.ver}.json`, JSON.stringify(E, null, 1), "application/json");
+  if (a === "export") snapshotPrices(), save(), download(`견적_${E.info.client || "고객"}_${kindTag()}v${E.info.ver}.json`, JSON.stringify(E, null, 1), "application/json");
   if (a === "copy") copyTsv();
   if (a === "pricepatch") { const pe = store.get("sido3_price_edits", {}), items = Object.entries(pe).map(([name, v]) => ({ name, set: +v > 0 ? { fixedPrice: +v, src: "확정" } : { fixedPrice: null } }));
     download("patch.json", JSON.stringify({ note: "관리자 견적 입력 화면에서 바꾼 기본 단가 " + new Date().toISOString().slice(0, 10), items }, null, 1), "application/json"); toast("patch.json 을 받았습니다. 견적프로그램 폴더의 tools 폴더에 넣고 ‘5_수정사항_반영하기.bat’을 실행하면 실장용에도 반영됩니다. (또는 Claude에게 ‘이 단가로 고정해줘’라고 하세요)") }
@@ -3819,7 +3820,7 @@ function capSave(name, data, okMsg) { if (!DL_CAP) return false;
 function printFile() {                                // 게시 주소: 인쇄 창을 띄울 수 없으므로, 견적서를 인쇄용 파일로 받아서 연 뒤 ‘PDF로 저장’
   let css = ""; for (const sh of document.styleSheets) { try { for (const r of sh.cssRules) css += r.cssText + "\n" } catch (e) { } }
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>견적서 ${esc(E.info.client || "")}</title><style>${css}\nbody{background:#fff!important;margin:0;padding:12px}.dbtn,.dadd,.docbar{display:none!important}@media print{body{padding:0!important}@page{margin:10mm;@top-left{content:""}@bottom-right{content:counter(page) " / " counter(pages);font-size:9px;color:#888}}}</style></head><body><main><section class="view" id="view-doc"><div id="docView">${$("#docView").innerHTML}</div></section></main><script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)})<\/script></body></html>`;
-  return capSave(`견적서_${(E.info.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${E.info.kind}v${E.info.ver}_인쇄용.html`, html, "인쇄용 파일을 저장했습니다. 그 파일을 열면 인쇄 창이 뜹니다. ‘PDF로 저장’을 고르세요.") }
+  return capSave(`견적서_${(E.info.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${kindTag()}v${E.info.ver}_인쇄용.html`, html, "인쇄용 파일을 저장했습니다. 그 파일을 열면 인쇄 창이 뜹니다. ‘PDF로 저장’을 고르세요.") }
 function download(name, text, type) { if (capSave(name, text)) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 500) }
 async function copyTsv() {
   const rows = [["공정", "위치", "품명", "규격·비고", "구분", "수량", "단위", "단가", "금액"].join("\t")];
@@ -3834,6 +3835,12 @@ async function copyTsv() {
 }
 
 /* ---------- 상세견적서 (표지 · 집계표 · 내역서 · 특기사항) ---------- */
+/* (v92) 불포함 목록의 가전 줄 — 사용자(2026-11-22): “가전 설치 및 연결 (식기세척기·인덕션 등) … 인덕션은 내용에 포함이 안되고 고객님이 직접 가져다 놓을 수도 있어 확인해”.
+   설치·연결뿐 아니라 가전제품 자체가 견적에 없다는 것과 고객이 직접 준비할 수 있다는 것을 적는다. 견적에 쿡탑·가전 설치 줄을 넣었을 때는 ‘견적서에 적힌 것 외의’를 붙인다. (데이터 파일은 그대로 — 여기서 글만 바꾼다) */
+function docExclude(doc) {
+  const has = R.lines.some(l => /^(cooktop|appInst)$/.test(l.lid || "") && l.qty > 0) || R.lines.some(l => l.extra && l.qty > 0 && /인덕션|식기세척기|식세기|쿡탑/.test(String(l.name || "")));
+  return ((doc || {}).exclude || []).map(x => /^가전 설치 및 연결/.test(x) ? (has ? "견적서에 적힌 것 외의 가전제품과 설치·연결 (식기세척기·인덕션 등 — 고객님이 직접 준비하실 수 있습니다)" : "가전제품과 설치·연결 (식기세척기·인덕션 등 — 고객님이 직접 준비하실 수 있습니다)") : x);
+}
 function addDays(d, n) { const x = new Date(d || Date.now()); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10) }
 var DOC_EDIT = false;
 function docSet(key, f, v) {                           // 상세견적서에서 고친 값을 견적에 넣는다 (q 수량 · p 단가 · n 이름 · x 빼기 · r 원래대로)
@@ -3900,6 +3907,8 @@ function docOptsDraw() {                              // 상세견적서 화면 
   const chip = (v, t) => `<button type="button" data-dur="${v}" aria-pressed="${v === "*" ? custom || docOptsDraw.open === true : !custom && !docOptsDraw.open && d === v}">${t}</button>`;
   const picks = [...new Set([...DUR_PICK, w].filter(n => n > 0))].sort((a, b) => a - b);   // (v86) 자동 계산은 ‘추천’으로만 — 기간은 실장이 골라서 정한다
   box.innerHTML = `<div class="bd" style="display:flex;flex-direction:column;gap:12px">
+    <div><b>견적서 구분</b> <span class="note">견적서 오른쪽 위에 나갑니다 · 지금: <b>${esc(E.info.kind || "견적서")}</b>${E.info.kind === "가견적" ? " — ‘실측 전 가견적이며 확정 금액이 아닙니다’ 안내가 견적서에 함께 들어갑니다" : ""}</span>
+      <div class="cmpch" style="margin-top:6px">${DOC_KINDS.map(k => `<button type="button" data-dkind="${k}" aria-pressed="${(E.info.kind || "견적서") === k}">${k}</button>`).join("")}</div></div>
     <div><b>예상 공사 기간</b> ${d ? `<span class="note">견적서 첫 장에 그대로 나갑니다 · 지금: <b>${esc(durTxt())}</b></span> <button type="button" class="btn ghost sm" data-dur="">↺ 정하지 않음으로</button>` : `<b style="color:var(--warn)">아직 정하지 않았습니다 — 아래에서 골라 주세요</b> <span class="note">고객에게 설명할 기간입니다 · 안 고르면 견적서에는 자동 계산 ‘약 ${w}주’로 나갑니다</span>`}
       <div class="cmpch" style="margin-top:6px">${picks.map(n => chip(String(n), n + "주" + (n === w ? " · 추천" : ""))).join("")}${chip("*", "직접 입력")}</div>
       ${custom || docOptsDraw.open ? `<input id="durIn" value="${esc(custom ? d : "")}" placeholder="예: 약 40일 · 12월 초 ~ 1월 중순 · 6.5" style="margin-top:6px;display:block;width:min(420px,100%)"><div class="note">숫자만 적으면 ‘약 ○주 (실측 후 확정)’, 글로 적으면 적은 그대로 나갑니다.</div>` : ""}</div>
@@ -3908,6 +3917,10 @@ function docOptsDraw() {                              // 상세견적서 화면 
     <div class="note">인쇄하면 견적서만 찍힙니다(이 칸 · 단추 · 인터넷 주소 · 날짜는 찍히지 않고, 쪽 번호만 오른쪽 아래에 작게 나옵니다).</div></div>`;
 }
 document.addEventListener("click", ev0 => { const g = ev0.target.closest && ev0.target.closest("[data-memogo]"); if (!g) return; const m = $("#memo"); if (!m) return; (m.closest(".card") || m).scrollIntoView({ block: "center", behavior: "smooth" }); setTimeout(() => { try { m.focus({ preventScroll: true }) } catch (e) { } }, 350) });
+/* (v92) 견적서 구분 — 사용자(2026-11-22): “상세견적서 오른쪽에 가견적이 아니고 견적서라고 작성하게 만들어 이유는 전부 가견적으로 나가는게 아니야”.
+   새 견적의 기본은 ‘견적서’. 실측 전 어림 견적일 때만 ‘가견적’을 고른다(그때만 ‘확정 금액이 아닙니다’ 안내가 들어간다). 전에 만든 견적은 그때 값 그대로 — 견적서 화면 맨 위에서 바로 바꾼다. */
+function kindTag() { const k = (E.info || {}).kind || ""; return k === "견적서" ? "" : k }   // 파일 이름에 붙이는 구분 (‘견적서_고객_견적서v1’이 되지 않게)
+document.addEventListener("click", ev0 => { const k = ev0.target.closest && ev0.target.closest("#docOpts [data-dkind]"); if (!k) return; E.info.kind = k.dataset.dkind; save(); renderDoc(); try { renderSummary() } catch (e) { } });
 document.addEventListener("click", ev0 => { const t = ev0.target, b = t.closest && t.closest("#docOpts [data-dur]"), vr = t.closest && t.closest("#docOpts [data-validreset]"); if (!b && !vr) return;
   if (vr) { delete E.info.validTo; save(); renderDoc(); return }
   if (b.dataset.dur === "*") { docOptsDraw.open = true; docOptsDraw(); const i = $("#durIn"); if (i) i.focus(); return }
@@ -3965,7 +3978,7 @@ function renderDoc() {
   <section class="page">
     <h2>특기사항</h2>
     <div class="two"><div class="box"><h3>포함</h3><ul>${(doc.include || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
-      <div class="box"><h3>불포함 (별도)</h3><ul>${(doc.exclude || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
+      <div class="box"><h3>불포함 (별도)</h3><ul>${docExclude(doc).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
     <div class="box"><h3>계약 조건</h3><ul>${(doc.terms || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
     <h3>대금 지급 조건</h3>
     <table><thead><tr><th>구분</th><th class="r">비율</th><th class="r">금액 (VAT 포함)</th><th>지급 시점</th></tr></thead><tbody>${pay}</tbody></table>
@@ -3983,7 +3996,7 @@ $("#memo") && ($("#memo").oninput = ev0 => { E.memo = ev0.target.value; save(); 
 /* (v83) 인쇄: 어느 화면에서 인쇄(Ctrl+P)를 눌러도 지금 견적서가 찍히고, ‘PDF로 저장’할 때 파일 이름이 ‘견적서_고객_종류v판’이 된다(끝나면 창 제목을 되돌린다).
    크롬이 붙이는 날짜 · 창 제목 · 주소는 아래 인쇄 CSS 의 @page 여백 상자로 없앤다(위쪽 상자를 비워 두고 아래쪽에 쪽 번호만 — 크롬 131부터. 2026-11-21 크롬 157 로 PDF 를 뽑아 확인). */
 const PRN = { t: null, de: false };
-function printName() { const i = E.info || {}; return `견적서_${String(i.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${i.kind || ""}v${i.ver || 1}` }
+function printName() { const i = E.info || {}; return `견적서_${String(i.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${i.kind === "견적서" ? "" : i.kind || ""}v${i.ver || 1}` }
 window.addEventListener("beforeprint", () => { try { if (PRN.t === null) { PRN.t = document.title; PRN.de = DOC_EDIT } DOC_EDIT = false; renderDoc(); document.title = printName() } catch (e) { } });
 window.addEventListener("afterprint", () => { try { if (PRN.t !== null) { document.title = PRN.t; PRN.t = null; if (PRN.de) { DOC_EDIT = true; renderDoc() } } } catch (e) { } });
 
@@ -5238,7 +5251,7 @@ function buildEstimateXlsx() {
   line("견적조건", 7);
   (doc.terms || []).forEach((t, i) => line(`${i + 1}. ${t}`));
   if ((doc.include || []).length) line("포함: " + doc.include.join(" / "));
-  if ((doc.exclude || []).length) line("불포함(별도): " + doc.exclude.join(" / "));
+  if (docExclude(doc).length) line("불포함(별도): " + docExclude(doc).join(" / "));
   if ((doc.payment || []).length) line("대금 지급: " + doc.payment.map(([n, r, w]) => `${n} ${r}% (${w})`).join(" → "));
   if (profitItems().length) line("기업이윤: 공사를 처음부터 끝까지 책임지고 관리하는 비용입니다 — " + profitItems().map(x => x[0]).join(" / "));
   if (E.memo) line("메모: " + E.memo);
@@ -5247,7 +5260,7 @@ function buildEstimateXlsx() {
 }
 function downloadBlob(name, blob) { if (capSave(name, blob)) return; const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 500) }
 function saveXlsx() {
-  try { snapshotPrices(); save(); downloadBlob(`견적서_${(E.info.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${E.info.kind}v${E.info.ver}.xlsx`, buildEstimateXlsx()); if (!DL_CAP) toast("엑셀 견적서를 저장했습니다. 엑셀에서 수량·단가를 고치면 금액이 따라 바뀝니다.") }
+  try { snapshotPrices(); save(); downloadBlob(`견적서_${(E.info.client || "고객").replace(/[\\/:*?"<>|]/g, "")}_${kindTag()}v${E.info.ver}.xlsx`, buildEstimateXlsx()); if (!DL_CAP) toast("엑셀 견적서를 저장했습니다. 엑셀에서 수량·단가를 고치면 금액이 따라 바뀝니다.") }
   catch (e) { toast("엑셀 파일을 만들지 못했습니다: " + e.message) }
 }
 document.addEventListener("click", ev0 => { if (ev0.target.closest('[data-act="xlsx"]')) saveXlsx() });
