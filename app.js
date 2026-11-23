@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-23.99"
+const APP_VER = "2026-11-24.100"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
@@ -5958,7 +5958,16 @@ async function srv(method, path, body) {
   if (SRV.down && method === "GET") { const m = path.match(/^\/api\/est\/[^/]+\/([^/]+)$/);   // 꺼져 있을 때 ‘열기’는 사본에서
     if (m) { if (SRV.front && Array.isArray(SRV.mirList) && SRV.mirList.some(x => x.id === m[1])) { try { return await mirGet(m[1]) } catch (e) { } } const k = await keepGet(m[1]); if (k) return k } }
   const h = srvHead();
-  const r = await fetch(srvU(path), { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+  /* (v100) 시간 제한: 회사 컴퓨터가 켜져는 있는데 대답을 못 할 때(2026-11-23 밤 — 저장소 디스크(외장 하드)가 멈춤) 요청이 끝없이 매달려, 저장이 됐는지 안 됐는지 알 수 없었다.
+     이제 제때 대답이 없으면 오류로 끝난다 → 부르는 쪽이 ‘꺼져 있을 때’와 같이 다룬다(저장은 이 기기에 두고 ‘올릴 견적’으로). 읽기 30초 · 저장 60초 · 새 판 받기와 수정사항 반영은 5분. */
+  const ac = typeof AbortController === "function" ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), srvWait(method, path)) : 0;
+  try { return await srv1(method, path, body, h, ac) }
+  catch (e) { if (e && e.name === "AbortError") { const x = new Error("회사 컴퓨터가 제때 대답하지 않았습니다"); x.timeout = true; throw x } throw e }
+  finally { clearTimeout(tm) }
+}
+const srvWait = (method, path) => /^\/api\/(update|adm\/patch)/.test(path) ? 300000 : method === "GET" || method === "DELETE" ? 30000 : 60000;
+async function srv1(method, path, body, h, ac) {
+  const r = await fetch(srvU(path), { method, headers: h, body: body ? JSON.stringify(body) : undefined, signal: ac ? ac.signal : undefined });
   if (r.status === 401 && ADM_OUT && SRV.me) { SRV.me = null; srvChip(); if ($("#view-saved") && !$("#view-saved").hidden) setTimeout(renderSrv, 0) }   // (v69) 밖 관리자: 로그인이 풀렸으면(12시간 지남 · 다른 곳에서 잠금 · 기기 지움) 화면 위 표시를 ‘다시 들어가기’로 바꾼다
   if (!r.ok) { const e = new Error(r.status === 401 ? "저장소에 들어갈 권한이 없습니다" : "저장소 오류 " + r.status); e.status = r.status; try { e.body = await r.json(); e.msg = (e.body && e.body.msg) || "" } catch (x) { e.msg = "" } throw e }
   return r.json();
@@ -5974,8 +5983,8 @@ function srvChip() {                                  // 화면 위 표시: 연�
   if (!SRV || !document.querySelector(".topin")) return; for (const id of ["#srvChip", "#srvOut"]) { const old = $(id); if (old) old.remove() }
   const down = !!(SRV.token && SRV.down), n = down ? pendIds().length : 0, w = SRV.me || (SRV.token ? store.get("sido_srv_who", {}) || {} : {});
   const who = SRV.me && SRV.me.role === "admin" ? "관리자" : w.name ? esc(w.name) + " 실장님" : "", lg = SRV.token && w.login ? ` (${esc(w.login)})` : "";   // (v65) 누가 로그인했는지 오른쪽 위에: ‘박재성 실장님 (sido100) 로그인 중’
-  const txt = down ? `${who ? who + " · " : ""}회사 컴퓨터 꺼짐 · 이 기기에 저장 중${n ? ` (올릴 견적 ${n}건)` : ""}` : SRV.me ? (SRV.token ? `<b>${who}</b>${lg} 로그인 중` : "회사 저장소 연결 · 관리자" + (ADM_OUT && SRV.me.dev ? ` (${esc(SRV.me.dev)})` : "")) : SRV.token ? "회사 저장소 연결 안 됨 · 눌러서 다시 로그인" : ADM_OUT ? "관리자 로그인이 풀림 · 눌러서 다시 들어가기" : "회사 저장소: 관리자 키 필요";
-  const at = down ? ' data-srvretry role="button" tabindex="0" style="cursor:pointer" title="회사 컴퓨터가 켜지면 저절로 다시 연결되고, 그동안 이 기기에 저장한 견적도 회사 저장소에 올라갑니다. 누르면 지금 다시 연결해 봅니다"' : SRV.me ? (SRV.token ? ' title="로그인돼 있습니다. 저장한 견적은 회사에도 보관됩니다"' : ' title="회사 저장소에 연결돼 있습니다. 저장한 견적은 회사 저장소에 올라갑니다"') : SRV.token ? ' data-srvout role="button" tabindex="0" style="cursor:pointer" title="누르면 로그인 화면으로 갑니다"' : ADM_OUT ? ' data-admre role="button" tabindex="0" style="cursor:pointer" title="들어온 지 12시간이 지났거나 다른 곳에서 잠갔습니다. 누르면 관리자 비밀번호를 다시 넣는 화면으로 갑니다 (쓰던 내용은 이 기기에 남아 있습니다)"' : "";
+  const txt = down ? `${who ? who + " · " : ""}${SRV.disk ? "회사 저장 디스크 응답 없음" : "회사 컴퓨터 꺼짐"} · 이 기기에 저장 중${n ? ` (올릴 견적 ${n}건)` : ""}` : SRV.me ? (SRV.token ? `<b>${who}</b>${lg} 로그인 중` : "회사 저장소 연결 · 관리자" + (ADM_OUT && SRV.me.dev ? ` (${esc(SRV.me.dev)})` : "")) : SRV.token ? "회사 저장소 연결 안 됨 · 눌러서 다시 로그인" : ADM_OUT ? "관리자 로그인이 풀림 · 눌러서 다시 들어가기" : "회사 저장소: 관리자 키 필요";
+  const at = down ? ` data-srvretry role="button" tabindex="0" style="cursor:pointer" title="${SRV.disk ? "회사 컴퓨터는 켜져 있지만 저장 디스크(외장 하드)가 대답하지 않습니다. 디스크가 돌아오면" : "회사 컴퓨터가 켜지면"} 저절로 다시 연결되고, 그동안 이 기기에 저장한 견적도 회사 저장소에 올라갑니다. 누르면 지금 다시 연결해 봅니다"` : SRV.me ? (SRV.token ? ' title="로그인돼 있습니다. 저장한 견적은 회사에도 보관됩니다"' : ' title="회사 저장소에 연결돼 있습니다. 저장한 견적은 회사 저장소에 올라갑니다"') : SRV.token ? ' data-srvout role="button" tabindex="0" style="cursor:pointer" title="누르면 로그인 화면으로 갑니다"' : ADM_OUT ? ' data-admre role="button" tabindex="0" style="cursor:pointer" title="들어온 지 12시간이 지났거나 다른 곳에서 잠갔습니다. 누르면 관리자 비밀번호를 다시 넣는 화면으로 갑니다 (쓰던 내용은 이 기기에 남아 있습니다)"' : "";
   document.querySelector(".topin").insertAdjacentHTML("beforeend", `<span class="chip ${SRV.me && !down ? "ok" : "warn"}" id="srvChip"${at}>${txt}</span>${(SRV.me && SRV.token && !down) || (SRV.front && down && SRV.token !== "0") ? '<span class="chip" id="srvOut" data-srvout role="button" tabindex="0" style="cursor:pointer" title="다른 아이디로 들어가거나, 여럿이 쓰는 컴퓨터에서 쓰고 난 뒤에 누르세요">로그아웃</span>' : SRV.me && ADM_OUT ? '<span class="chip" id="srvOut" data-admout role="button" tabindex="0" style="cursor:pointer" title="관리자 화면을 잠급니다. 다시 열려면 관리자 비밀번호를 넣어야 합니다. 자리를 비울 때 누르세요">잠그기</span>' : ""}`);
   if (!SRV.front && SRV.token && SRV.me && SRV.me.front && !$("#frontTip")) document.querySelector(".topin").insertAdjacentHTML("beforeend", `<a class="chip ok" id="frontTip" href="${esc(SRV.me.front + (SRV.me.off && !SRV.me.gate ? "#u=" + SRV.me.off : ""))}" target="_blank" rel="noopener" style="text-decoration:none" title="회사 컴퓨터가 꺼져 있어도 열리는 주소입니다. 아이디·비밀번호는 같고, 회사에 보관된 내 견적이 그대로 보입니다. 즐겨찾기를 이 주소로 바꿔 주세요">꺼져 있어도 열리는 새 주소 →</a>`);   // (v81)
 }
@@ -5995,8 +6004,12 @@ async function pendSync() {                           // 끊긴 동안 이 기�
 async function srvRetry(byUser) {                     // 끊긴 회사 컴퓨터에 다시 연결해 본다 (30초마다 · 화면으로 돌아올 때 · 인터넷이 다시 잡힐 때 · 표시를 눌렀을 때)
   if (!SRV || !SRV.token || !SRV.down || srvRetry.busy) return; srvRetry.busy = true;
   try { const r = await fetch(srvU("/api/ping"), { cache: "no-store" }); if (!r.ok) throw 0;
+    let j = null; try { j = await r.json() } catch (x) { }
+    const bad = !!(j && j.srv >= 22 && j.disk && (j.disk.st === "err" || j.disk.st === "wait"));   // (v100) 회사 컴퓨터는 켜져 있는데 저장 디스크가 대답하지 않는 중 — 서버 22판부터는 디스크가 돌아오면 서버가 스스로 알아채 ok 로 바꾼다 (그 전 판은 누가 저장해 봐야 바뀌므로 그대로 연결해 본다)
+    if (!!SRV.disk !== bad) { SRV.disk = bad; srvChip() }
+    if (bad) throw 1;
     await srvConnect(); if (SRV.me && !pendIds().length) toast("회사 컴퓨터에 다시 연결됐습니다.") }
-  catch (e) { if (byUser) toast("아직 회사 컴퓨터에 연결되지 않습니다. 켜지면 저절로 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다.") }
+  catch (e) { if (byUser) toast(SRV.disk ? "회사 컴퓨터의 저장 디스크가 아직 대답하지 않습니다. 돌아오면 저절로 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다." : "아직 회사 컴퓨터에 연결되지 않습니다. 켜지면 저절로 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다.") }
   finally { srvRetry.busy = false }
 }
 setInterval(() => { if (SRV && SRV.token && SRV.down && document.visibilityState !== "hidden") srvRetry() }, 30000);
@@ -6005,7 +6018,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 document.addEventListener("click", ev0 => { if (ev0.target.closest && ev0.target.closest("[data-srvretry]")) srvRetry(true) });
 async function srvConnect() {
   if (!SRV) return;
-  try { SRV.me = await srv("GET", "/api/me"); SRV.down = false; if (SRV.front) frontKeep(SRV.me); if (SRV.me.role === "staff") store.set("sido_srv_who", { id: SRV.me.id, name: SRV.me.name, login: SRV.me.login || "" }); if (SRV.me.role === "staff" && !E.info.manager) { E.info.manager = SRV.me.name; save(); if ($("#info")) renderInfo() } }
+  try { SRV.me = await srv("GET", "/api/me"); SRV.down = false; SRV.disk = false; if (SRV.front) frontKeep(SRV.me); if (SRV.me.role === "staff") store.set("sido_srv_who", { id: SRV.me.id, name: SRV.me.name, login: SRV.me.login || "" }); if (SRV.me.role === "staff" && !E.info.manager) { E.info.manager = SRV.me.name; save(); if ($("#info")) renderInfo() } }
   catch (e) { SRV.me = null; SRV.down = !!SRV.token && (!e.status || e.status >= 500); if (SRV.front && e.status === 401 && SRV.token !== "0") { frontAfter.exp = true; frontOut() } }   // 대답이 없거나 5xx = 회사 컴퓨터가 꺼져 있음 (401 = 로그인이 풀림)
   if (SRV.me && SRV.me.ai && !KB_AI) { KB_AI = srvAi; try { helpDraw() } catch (e) { } }   // 서버에 AI 키가 있으면 회사 주소의 챗봇도 AI 로 답한다 (없으면 저장된 답만)
   if (ADM_OUT && location.search) { try { history.replaceState(null, "", "/admin/") } catch (e) { } }
@@ -6070,7 +6083,7 @@ async function srvSave(force, prevAt, X0) { const X = X0 || E;   // X0 = 올릴 
     }
     const body = { ...X, savedBy: SRV.me.name }; if (SRV.me.role === "admin" && own !== "admin") body._owner = own;   // 관리자가 실장의 견적을 고쳤으면 그 실장의 견적으로 저장한다
     await srv("PUT", "/api/est/" + X.id, body); srvSynced(X.savedAt, X); keepPut(X); if (SRV.token) srvMap(PEND_K, X.id, null); SRV.list = null; if (X.id === E.id) measPush(); return true
-  } catch (e) { if (!e.status || e.status >= 500) { pendAdd(X); srvLost() } return false }   // 서버가 대답하지 않으면 올릴 것으로 적어 두고 ‘꺼짐’으로 바꾼다 → 30초마다 다시 연결해 본다
+  } catch (e) { if (!e.status || e.status >= 500) { if (e.status === 503 && e.body && e.body.error === "storage") SRV.disk = true; pendAdd(X); srvLost() } return false }   // 서버가 대답하지 않으면 올릴 것으로 적어 두고 ‘꺼짐’으로 바꾼다 → 30초마다 다시 연결해 본다
 }
 const SENT_HOW = { print: "인쇄", export: "파일", copy: "엑셀복사", xlsx: "엑셀" };
 function srvSent(how) {                              // 고객에게 나가는 견적(인쇄·엑셀·파일)을 회사 저장소에 따로 남긴다 — 서버가 달·실장별로 쌓고, 같은 내용은 다시 남기지 않는다
