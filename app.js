@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-24.100"
+const APP_VER = "2026-11-24.101"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
@@ -1609,7 +1609,7 @@ const kbCore = q0 => { let q = kbNorm(q0); for (const w of KB_FILL) q = q.split(
 const kbTok = q => [...new Set(String(q).toLowerCase().split(/[\s,·?!.~]+/).flatMap(t => { const x = kbNorm(t), y = x.replace(/(은|는|이|가|을|를|의|에|도|로|으로|와|과|랑|이랑|요|인가요|인지|일까|뭐야|뭔가요|어때|알려줘|궁금해|있어|있나요|해줘|하나요|되나요|인가|이야)$/, ""); return [x, y, x.replace(/(할때|하려면|하면|하는|해서|하고|하기|하게|해야|할|한|했|해|되면|되는|된|됐|돼)$/, "")] }).filter(t => t.length >= 2 && !KB_FILL.includes(t)))];
 const kbG = e => { if (!e._g) { e._g = kbGram(kbNorm(e.q + (e.k || []).join(""))); e._ga = kbGram(kbNorm(e.a)) } return e };
 const HELP_EASYQ = /뭐야|뭔가요|뭐에요|뭐예요|뭐임|뭔지|뭐지|뭐냐|뭔데|무슨뜻|뜻이|뜻은|뜻좀|이란|란게|라는게|왜해|왜하|왜달|왜필요|처음듣|쉽게/, HELP_RECQ = /추천|어떻게(넣|구성|하는게|해야|하면좋|들어가)|보통어떻게|뭐가좋|평대|구성/;
-const KB_HINT = [[/왜해|왜하|왜달|왜필요|꼭해야|안하면/, /왜 하나/], [/어디에|어디다|어느/, /어디에 하나/], [/며칠|몇일|얼마나걸|걸려|걸리나|기간/, /기간/], [/하자|불량|as|a\/s|소리|소음|들뜨|들뜸|깨지|깨졌|벌어|변색|처지|처짐|고장|안닫|나는데/, /흔한 하자/], [/원인|왜/, /원인/], [/보수|수리|고치|고쳐/, /보수/], [/예방/, /예방/], [/주의|조심|하자|실수|문제/, /주의/], [/순서|절차|과정/, /순서/], [/로스/, /로스/], [/계산|몇장|몇박스|몇롤|몇개|몇평/, /계산식/], [/견적|수량|물량|계산/, /견적/], [/준비|바탕/, /준비|바탕/], [/부자재|자재|재료|준비물/, /부자재/], [/종류/, /종류/], [/경우|상황|조건/, /경우/], [/고르|선택|추천|뭐가좋|뭐가나/, /고르/], [/규격|치수|크기|두께/, /규격|치수/], [/발주|주문/, /발주/], [/관리|청소/, /관리 방법/], [/고객|뭐라고|설명/, /고객/]];   // 질문의 뜻 → 그 내용을 담은 소제목
+const KB_HINT = [[/왜해|왜하|왜달|왜필요|꼭해야|안하면/, /왜 하나/], [/어디에|어디다|어느/, /어디에 하나/], [/며칠|몇일|얼마나걸|걸려|걸리나|기간/, /기간/], [/하자|불량|as|a\/s|소리|소음|들뜨|들뜸|깨지|깨졌|벌어|변색|처지|처짐|고장|안닫|나는데/, /흔한 하자/], [/원인|왜/, /원인/], [/보수|수리|고치|고쳐/, /보수/], [/예방/, /예방/], [/주의|조심|하자|실수|문제/, /주의/], [/순서|절차|과정/, /순서/], [/로스/, /로스/], [/계산|몇장|몇박스|몇롤|몇개|몇평/, /계산식/], [/견적|수량|물량|계산/, /견적/], [/준비|바탕/, /준비|바탕/], [/부자재|자재|재료|준비물|필요한거|필요한것|필요한게|필요한건|뭐필요|뭐가필요|뭐뭐필요|뭘준비|뭐준비/, /부자재/], [/종류/, /종류/], [/경우|상황|조건/, /경우/], [/고르|선택|추천|뭐가좋|뭐가나/, /고르/], [/규격|치수|크기|두께/, /규격|치수/], [/발주|주문/, /발주/], [/관리|청소/, /관리 방법/], [/고객|뭐라고|설명/, /고객/]];   // 질문의 뜻 → 그 내용을 담은 소제목
 const KB_CANON = [[/매립\s*조명|매립\s*등|매입\s*조명|매입\s*등/g, "매입등"], [/화장실/g, "욕실"], [/베란다/g, "발코니"], [/샤시|새시/g, "샷시"], [/메지/g, "줄눈"], [/씽크대/g, "싱크대"], [/두꺼비집/g, "분전반"], [/중천장/g, "평천장"], [/모노륨/g, "장판"], [/하부\s*몰딩/g, "걸레받이"], [/상부\s*몰딩/g, "천장 몰딩"], [/할려고|하려고\s*하는데|하려는데/g, " "], [/(?<![\d.])2\d\s*평(형|대)?/g, "$& 20평대 "], [/(?<![\d.])3\d\s*평(형|대)?/g, "$& 30평대 "], [/(?<![\d.])[4-6]\d\s*평(형|대)?/g, "$& 40평대 "], [/올\s*수리|올\s*리모델링|풀\s*리모델링|전체\s*수리/g, "올수리 전체 리모델링"]];
 const kbCanon = q => KB_CANON.reduce((t, [a, b]) => t.replace(a, b), String(q || ""));   // 현장에서 달리 부르는 말을 저장된 답에 쓰인 말로 바꿔서 찾는다
 const kbKr = (e, x) => (e._kr = e._kr || [])[x] || (e._kr[x] = /\s/.test(e.k[x]) ? new RegExp(e.k[x].trim().split(/\s+/).map(w => kbNorm(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".{0,2}")) : /$^/);   // 두 낱말 넘는 낱말은 사이에 조사 한두 글자가 끼어도 맞는 것으로 본다
@@ -1979,6 +1979,10 @@ function helpBathSay(q) { const qs = q.replace(/\s+/g, "");   // (v71) 욕실마
         for (const s of pick) bathModeSet(s.id, md); refresh(true);
         return `<div class="hk">${pick.map(s => esc(s.name)).join(" · ")} → ‘${esc(lab)}’${bathRo(lab).slice(lab.length)} 바꿨습니다.</div>` + where + '<div class="hw">⚠ 철거·방수·타일·도기 수량이 맞는지 실장님이 직접 확인해 주세요.</div><div class="hm"><button type="button" class="lk" data-undo>되돌리기</button></div>' } } }
   return null }
+/* (v101) ‘가구 표시하면 금액 바뀌어?’ · ‘보조주방 넣으면 도배 평수 늘어나?’ = 무엇을 했을 때 어떻게 달라지는지 묻는 말이다.
+   값을 묻는 말(‘얼마야’)도, 어느 칸에 넣는지 묻는 말도 아니다 → 금액 안내 · 위치 안내가 가로채지 않고 저장된 답(그 기능의 설명)으로 보낸다. */
+const HELP_EFFQ = /(하|넣으|빼|바꾸|그리|끄|켜|지우|고치|늘리|줄이|올리|내리|되|쓰|누르|고르|[가-힣]으)면.*(바뀌|바뀝|달라지|달라져|변하|변해|늘어|줄어|올라가|내려가|그대로|영향|반영)/;
+const helpEffQ = qs => HELP_EFFQ.test(qs) && /금액|가격|비용|견적|합계|평수|수량|인원|넓이|면적/.test(qs) && !/얼마/.test(qs);
 function helpProgDo(q) {                              // 프로그램 조작: 단계 이동 · 견적서 열기 · 공사 찾아 켜기/끄기. 알아들으면 답(HTML), 아니면 null
   const qs = q.replace(/\s+/g, ""), steps = STEPS();
   if (qs.length <= 22 && /(가줘|가자|이동|열어|넘어가|보여줘|보러)/.test(qs) && /(단계|공정|화면|탭|견적서|으로|로)/.test(qs)) {   // ‘목공 단계로 가 줘’
@@ -1997,7 +2001,7 @@ function helpProgDo(q) {                              // 프로그램 조작: �
       refresh(true); return `<div class="hk">‘${esc(xn)}’을(를) 공간에 넣었습니다. 아직 금액은 그대로입니다.</div>` + where + '<div class="hw">⚠ 넓이와 계산 방식(방처럼 · 주방처럼 · 발코니처럼)은 실장님이 직접 확인해 주세요.</div><div class="hm"><button type="button" class="lk" data-undo>되돌리기</button><button type="button" class="lk" data-xspgo>추가 공간 줄 보기</button></div>' } }
   if (qs.length <= 22 && !/배관|난방|보일러|방법|뭐야|이란|차이/.test(qs)) {   // ‘견적 저장해 줘’ · ‘인쇄하고 싶어’ · ‘엑셀로 만들어 줘’ · ‘저장된 견적 열어 줘’
     const ask = helpIsAct(q) || /어디|어딨|어떻게|하고싶|할래|하려면|하자$|할게$/.test(qs), doc = t => { show("doc"); return `<div class="hk">상세견적서를 열었습니다. 위쪽 ‘${t}’ 단추를 누르세요.</div>` };
-    if (ask && /저장(된|한)견적|견적목록|불러와|불러오|예전견적|지난견적|이전견적/.test(qs)) { show("saved"); return '<div class="hk">‘저장된 견적’ 화면을 열었습니다.</div>' + helpRow("다음", "목록에서 견적을 고르면 다시 열립니다.") }
+    if (ask && /저장(된|한)견적|견적목록|불러와|불러오|예전견적|지난견적|이전견적/.test(qs) && !/관리자|다른(곳|기기|사람|컴퓨터|데)|고친|고쳤|수정한|바뀐|안보|안나와|안떠|왜/.test(qs)) { show("saved");   /* (v101) ‘관리자가 고친 견적은 어떻게 불러와’는 화면을 여는 말이 아니라 방법을 묻는 말 → 저장된 답으로 */ return '<div class="hk">‘저장된 견적’ 화면을 열었습니다.</div>' + helpRow("다음", "목록에서 견적을 고르면 다시 열립니다.") }
     if (ask && /인쇄|프린트|출력|pdf/i.test(qs)) return doc("인쇄 · PDF 저장");
     if (ask && /엑셀/.test(qs)) return doc("엑셀 견적서 저장 (.xlsx)") + helpRow("다른 방법", "‘엑셀용 복사’를 누른 뒤 엑셀에 붙여 넣어도 됩니다.");
     if (ask && /내보내|파일로/.test(qs)) return doc("견적 파일 내보내기");
@@ -2349,7 +2353,7 @@ function helpCmpSay(q) {                              // 말로 비교견적 만
   return '<div class="hk">비교견적은 공사 줄의 <b>비교견적</b> 단추로 만듭니다. 합계에는 넣지 않고 금액만 따로 보여 줍니다.</div>' + helpRow("종류 비교", "줄의 ‘비교견적 ▾’ → 다른 종류를 누르면 차액이 나옵니다. <code data-helpfill>장판이랑 강마루 비교견적 해줘</code>") + helpRow("할지 말지", "‘이 공사를 별도로 돌리기’ 또는 묶음의 ‘묶음째 비교견적’. <code data-helpfill>탄성코트는 비교견적으로 넣어줘</code>") + helpRow("직접 입력", "직접 입력한 공사·필름 줄은 ‘비교견적(별도)’를 체크합니다.");
 }
 function helpWhereSay(q) {                            // 공사가 어느 단계 · 어느 묶음에 있는지
-  const qs = q.replace(/\s+/g, "");
+  const qs = q.replace(/\s+/g, ""); if (helpEffQ(qs)) return null;
   { const pm = D.stepLines && qs.length <= 30 && /평수/.test(qs) && /어디|어딨|어떻게|넣|바꾸|바꿔|고치|고쳐|입력|줄이|줄여/.test(qs) && !/계산|몇|얼마|뭐야|무엇|왜|인원|인건비|식대|작업비|바뀌어|바뀌나|바뀝|따라/.test(qs) ? (/도배|벽지/.test(qs) ? "s9" : /장판|마루|바닥|데코타일/.test(qs) ? "s8" : "") : "";   // ‘도배 평수 어디에 넣어?’ → 그 묶음의 평수 칸
     if (pm) { const steps = STEPS(), i = steps.findIndex(s => s.key === pm), c = (D.cats[pm] || []).find(c => c.pyc);
       if (i >= 0 && c) return `<div class="hk">${i}단계 ‘${esc(steps[i].label)}’의 ‘${esc(c.label)}’ 묶음 맨 위 ‘${pm === "s9" ? "도배 평수" : "평수"}’ 칸에 넣습니다.</div>` + helpRow("평수", pm === "s9" ? "도배 평수(벽·천장에 바르는 넓이)입니다. 집 전체를 도배하면 아파트 평형에 맞춰 자동으로 들어가 있습니다(34평이면 85평)." : "아파트 평형 기준입니다. 집 전체를 하면 현장 정보의 평형이 그대로 들어가 있어 고칠 것이 없습니다.") + helpRow("일부만", "안 하는 공간을 도면·공간 단추에서 빼거나, ‘평수’ 칸에 줄인 평수를 넣습니다.") + helpRow("나머지", "자재·부자재·작업비·식대는 프로그램이 계산해 상세견적서에 나눠 적습니다.") + `<div class="hm"><button type="button" class="lk" data-wgo="${i}|${pm}|${c.key}">가서 보기</button></div>` } } if (!D.stepLines || qs.length > 30 || !/(?<!스)위치|어디|어딨|어느단계|어느공정|몇단계/.test(qs) || /치수|메모|도면|저장|인쇄|엑셀|주소|평면도|높이|간격|박스|공사기간|유효기간|기업이윤|여기로가기|어떻게(정|잡)|정해|잡아|추천|좋아|좋을|좋은|보통|써도|해도|되나|될까/.test(qs) || !/견적|넣|입력|체크|항목|공정|위치|있어|있나|있지|있는|찾/.test(qs)) return null;
@@ -2426,7 +2430,7 @@ function helpBasicMake(py, guessed, m) {
     + `<div class="hm"><button type="button" data-goto="0">현장 정보 넣기</button><button type="button" class="lk" data-helpsay="견적서 보여줘">상세견적서</button>${kept ? '<button type="button" class="lk" data-undo>되돌리기 (쓰던 견적으로)</button>' : ""}</div>`;
 }
 function helpBig(q) {                                 // 위 세 가지 가운데 맞는 것 (없으면 null)
-  const qs = q.replace(/\s+/g, "").replace(/[?？!.~]+$/, ""); if (qs.length > 34 || /\d\s*[*xX×]\s*\d/.test(q)) return null;
+  const qs = q.replace(/\s+/g, "").replace(/[?？!.~]+$/, ""); if (qs.length > 34 || /\d\s*[*xX×]\s*\d/.test(q) || helpEffQ(qs)) return null;
   if (/기기|컴퓨터|휴대폰|핸드폰|로그인|로그아웃|전용주소|비밀번호|아이디/.test(qs)) return null;   // (v84) 기기 · 로그인을 묻는 말(‘집 컴퓨터에서 처음 쓰려면’)은 견적 쓰는 순서 안내가 아니라 저장된 답으로
   const tr = KB_TRADE.filter(x => x[1].test(q)).length;
   if (HELP_BASEQ.test(qs) && !/얼마|비용|금액|가격|단가|기간|며칠|몇일|차이|뭐야$|순서|부터|먼저|추천|좋/.test(qs) && (!tr || (tr === 1 && /기본/.test(qs)))) return helpBaseSay(q);
@@ -2678,7 +2682,7 @@ function helpLineTxt(ls, max) {                       // 켜진 줄을 ‘이름
 }
 function helpPriceSay(q) {
   const qs = String(q).replace(/\s+/g, "").replace(/[?？!.~]+$/, ""); if (!D.stepLines || qs.length < 4 || qs.length > 34 || /\d\s*[*xX×]\s*\d/.test(q)) return null;
-  if (!HELP_PRICEW.test(qs) || HELP_PRICENO.test(qs) || /^(총|전체|합계|전부|다해서|다합쳐|모두|토탈|견적|금액|비용)/.test(qs)) return null;
+  if (!HELP_PRICEW.test(qs) || HELP_PRICENO.test(qs) || helpEffQ(qs) || /^(총|전체|합계|전부|다해서|다합쳐|모두|토탈|견적|금액|비용)/.test(qs)) return null;
   const pm = qs.match(/(?<!\d)(\d{2})평/), pyQ = pm ? +pm[1] : 0;
   // 무엇의 금액인지: 평형과, 값을 묻는 말부터 뒤를 떼고 남은 말
   let head = String(q).replace(/[?？!.~]+$/, "").replace(/\d{2}\s*평\s*(형|대)?\s*(아파트|집|기준|이면|인데|짜리|일때|일 때)?/g, " ");
