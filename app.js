@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-28.104"
+const APP_VER = "2026-11-28.105"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
@@ -12,7 +12,7 @@ const NS = (() => { try { if (!/^https?:$/.test(location.protocol)) return ""; c
   if (/^\/admin(\/|$)/.test(p) && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return "adm:";
   if (m && location.hash === "#view") return "view:" + m[1] + ":" } catch (e) { } return "" })();
 /* (v81) 항상 열리는 주소(깃허브 Pages)로 열었는가: 그 주소의 index.html 이 front.js 로 window.SIDO_FRONT = { api 회사 서버 주소, mir 잠근 사본이 있는 곳, kb } 를 준다. 다른 곳에서는 null — 전과 똑같이 동작한다. */
-const FRONT = (() => { try { const f = window.SIDO_FRONT; return f && f.api && /^https?:$/.test(location.protocol) ? { api: String(f.api).replace(/\/+$/, ""), mir: String(f.mir || ""), kb: String(f.kb || ""), gate: String(f.gate || "").replace(/\/+$/, "") } : null } catch (e) { return null } })();
+const FRONT = (() => { try { const f = window.SIDO_FRONT; return f && f.api && /^https?:$/.test(location.protocol) ? { api: String(f.api).replace(/\/+$/, ""), mir: String(f.mir || ""), kb: String(f.kb || ""), gate: String(f.gate || "").replace(/\/+$/, ""), box: !!f.box && !!f.gate } : null } catch (e) { return null } })();   // (v105) box = 바깥 보관함을 쓴다 (front.js 에 표시가 있을 때만)
 function frontSess(v) {                               // 이 기기의 로그인: 읽기 frontSess() · 쓰기 frontSess({ tok, keep, mir, who }) · 지우기 frontSess(null). keep = 로그인 유지(끄면 창을 닫을 때 사라진다)
   const K = "sido_front_sess";
   try { if (v === undefined) { const s = sessionStorage.getItem(K) || localStorage.getItem(K); return s ? JSON.parse(s) : null }
@@ -5927,7 +5927,7 @@ document.addEventListener("click", async ev0 => { const b = ev0.target.closest &
 function frontDownNote() {                            // ‘저장된 견적’ 맨 위: 꺼져 있을 때 무엇이 보이는지
   const S = frontSess(), n = pendIds().length, up = n ? ` (올릴 견적 <b>${n}건</b>)` : "", re = ' <button type="button" class="btn ghost sm" data-srvretry>지금 다시 연결해 보기</button>';
   if (!S || !S.tok) return `<p class="note down"><b>회사 컴퓨터가 꺼져 있고, 로그인돼 있지 않습니다.</b> 로그인하면 저장해 둔 내 견적이 보입니다${up}.${re}</p>`;
-  const here = `여기서 저장한 견적${up}은 <b>아직 이 기기에만 있습니다</b> — 회사 컴퓨터가 켜져 있을 때 <b>이 기기에서</b> 프로그램을 열어야 올라갑니다.`, lna = lnaNote();   // (v104) ‘저절로’라고 하지 않는다 — 이 기기에서 열어야 올라간다
+  const here = FRONT && FRONT.box ? `여기서 저장한 견적은 <b>바깥 보관함</b>에 올려 둡니다 — ${boxSay()}. 올리지 못한 것은 이 기기에만 있습니다(목록의 표시).` : `여기서 저장한 견적${up}은 <b>아직 이 기기에만 있습니다</b> — 회사 컴퓨터가 켜져 있을 때 <b>이 기기에서</b> 프로그램을 열어야 올라갑니다.`, lna = lnaNote();   // (v105) 바깥 보관함   // (v104) ‘저절로’라고 하지 않는다 — 이 기기에서 열어야 올라간다
   if (Array.isArray(SRV.mirList)) return `${lna}<p class="note down"><b>${SRV.lna ? "회사 컴퓨터에 연결하지 못해" : "회사 컴퓨터가 꺼져 있어"}</b> 회사에 보관해 둔 내 견적은 <b>사본</b>으로 보여 드립니다 (꺼지기 몇 분 전까지 저장한 것 · ${SRV.mirList.length}건). 그대로 열어서 쓸 수 있습니다. ${here}${re}</p>`;
   const bad = !mirLoad.busy && SRV.mirErr ? `<b>회사에 보관해 둔 내 견적의 사본을 불러오지 못했습니다</b> (${esc(SRV.mirErr)}). ${keepList() ? "지금은 이 기기에 받아 둔 사본(마지막으로 연결됐을 때까지)을 보여 드립니다." : "지금은 이 기기에 있는 견적만 보입니다."} <button type="button" class="btn sm" data-mirre>다시 불러오기</button>` : "";   // (v104) 사본을 못 불러온 까닭과 다시 불러오기
   return `${lna}<p class="note down"><b>${SRV.lna ? "회사 컴퓨터에 연결하지 못했습니다." : "회사 컴퓨터가 꺼져 있습니다."}</b> ${mirLoad.busy ? "회사에 보관해 둔 내 견적의 사본을 불러오는 중입니다…" : bad || (keepList() ? "회사에 보관해 둔 내 견적은 이 기기에 받아 둔 사본(마지막으로 연결됐을 때까지)으로 보여 드립니다." : "회사에 보관해 둔 내 견적의 사본을 불러오지 못해, 지금은 이 기기에 있는 견적만 보입니다.")} ${here}${re}</p>`;
@@ -5996,22 +5996,103 @@ const PEND_K = "sido_srv_pend";
 const pendWho = () => SRV && SRV.me ? SRV.me.id : (store.get("sido_srv_who", {}) || {}).id || "?";
 const FAIL_K = "sido_srv_fail", CLASH_K = "sido_srv_clash";   // (v104) 회사가 받지 않은 견적 · 다른 곳과 겹쳐 올리지 않은 견적 (srvSave 아래 설명)
 const failWhy = st => st === 403 ? "사용이 중지된 아이디이거나 권한이 없습니다" : st === 400 ? "회사 저장소가 이 견적을 받지 않았습니다" : st === 404 ? "회사 저장소 주소가 맞지 않습니다" : "회사 저장소 오류 " + st;
-const markIds = k => { const m = store.get(k, {}) || {}, w = pendWho(); return Object.keys(m).filter(id => !m[id] || !m[id].who || m[id].who === w || w === "?") };
+const markIds = k => { const m = store.get(k, {}) || {}, w = pendWho(), L = new Set((store.get("sido3_list", []) || []).map(x => x.id)); return Object.keys(m).filter(id => L.has(id) && (!m[id] || !m[id].who || m[id].who === w || w === "?")) };   // (v105) 이 기기 목록에 없는 견적(줄이 없어 확인할 길이 없음)은 세지 않는다
 const markOf = (k, id) => { const v = (store.get(k, {}) || {})[id]; return v && (!v.who || v.who === pendWho() || pendWho() === "?") ? v : null };
 const pendIds = () => { const P = store.get(PEND_K, {}) || {}, w = pendWho(); return Object.keys(P).filter(id => P[id] === "?" || w === "?" || P[id] === w) };
 function pendAdd(X) { if (!SRV || !SRV.token || SRV.token === "0" || !X || !X.id) return;   /* "0" = 항상 열리는 주소에서 로그인하지 않은 상태 — 로그인해야 쓰므로 올릴 것도 적지 않는다 (v84) */ srvMap(PEND_K, X.id, pendWho()); srvChip() }
+/* (v105) 바깥 보관함 — 사용자(2026-11-28): “실장님들이 올리고 있는 견적서가 … 사무실에서 로그인했을 때 견적서가 안 올라와 있다” → “네, 만들어 주세요”.
+   회사 컴퓨터가 꺼져 있거나 이 기기에서 닿지 않을 때 저장한 견적을, ‘올릴 견적’으로 남기는 것에 더해 잠가서 문지기(FRONT.gate)의 보관함에 올린다.
+   회사 서버(23판)가 켜지면 스스로 가져간다 → 그 기기를 다시 열지 않아도, 사무실의 다른 기기에서 보인다.
+   잠그는 열쇠 = 회사가 준 내 보관본 열쇠(frontSess().mir — 회사 서버만 같은 열쇠를 갖는다) · 증명 = 내 전용 코드로 만든 HMAC(코드 · 번호는 보내지 않는다).
+   기기 밖으로 나가는 것: 암호문 · 아이디 · 견적 번호 · 저장 시각 · 증명. 항상 열리는 주소이고 front.js 에 box 표시가 있을 때만 쓴다. */
+const BOX_K = "sido_box", BOX_PART = 1048576, BOX_MAX = 8388608;   // { 견적 번호: { st "up" 올림 | "local" 못 올림, why, sig, a 저장 시각, who } } · 조각 1MiB · 견적 하나 8MiB (문지기 keeper.js 의 BOX 와 같다)
+const boxOn = () => !!(FRONT && FRONT.box && SRV && SRV.front && SRV.token && SRV.token !== "0" && window.crypto && crypto.subtle && (frontSess() || {}).off && ((frontSess() || {}).mir || {}).key);
+const boxOf = id => { const v = srvMap(BOX_K, id); return v && (!v.who || v.who === pendWho() || pendWho() === "?") ? v : null };
+const BOX_WHY = { big: "너무 큼", quota: "보관함 한도", net: "보관함에 닿지 않음", proof: "로그인 확인 안 됨", clock: "기기 시계가 맞지 않음" };
+const hexOf = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+/* (v105) 줄기 표시 + 저장 번호.
+   줄기(k) = 이 기기(+ 아이디)마다 한 번 만든 무작위 글자. 저장 번호(c) = 그 줄기 하나에 하나뿐인, 저장할 때마다 1씩 늘어나는 번호(견적마다 따로 세지 않는다 → 버릴 기록이 없다).
+   보관함에 올릴 때(k · c)와 회사에 직접 저장할 때(_stem · _seq) 같이 보낸다 → 회사 서버가 같은 줄기 안의 앞뒤를 기기 시계가 아니라 번호로 가린다.
+   · 번호는 절대 작아지지 않는다: 먼저 다음 번호를 적어 두고 나서 낸다. 적지 못하면(저장 공간이 꽉 참) 줄기를 새로 만들고 그 줄기로 낸다(다음에 열면 또 새 줄기 → 서버는 모르는 줄기로 보고 사본).
+   · 줄기는 있는데 번호 값이 없거나 숫자가 아니면(일부만 지워짐 · 깨짐) 줄기를 새로 만든다.
+   · ‘같은 저장(같은 저장 시각)은 같은 번호’는 작은 임시 기억(SEQ.MEM 개)으로만 — 거기에 없으면 다음 번호를 준다(1로 돌아가지 않는다). 회사에 직접 저장할 때 그 견적에 대해 낸 번호들(_seen)도 함께 보내,
+     서버가 ‘보관함 것이 정말 이 기기의 옛 판인가’를 확실히 알 때만 지우게 한다. */
+const SEQ_K = "sido_box_seq2", SEQ = { MEM: 200 };   // MEM = ‘같은 저장은 같은 번호’용 임시 기억의 크기 (시험에서 줄여 볼 수 있게 값으로 둔다)
+const stemNew = () => [...crypto.getRandomValues(new Uint8Array(12))].map(b => "abcdefghijkmnpqrstuvwxyz23456789"[b % 32]).join("");
+function stemState() {                                // → { k 줄기, n 마지막으로 낸 번호 } (이 기기 · 아이디마다)
+  const w = pendWho(), mem = stemState.m || (stemState.m = {});
+  if (mem[w]) return mem[w];
+  const all = store.get(SEQ_K, {}) || {}, r = all[w];
+  let st = r && /^[a-z0-9]{8,24}$/.test(r.k || "") && Number.isInteger(r.n) && r.n >= 0 ? { k: r.k, n: r.n } : null;
+  if (!st) { st = { k: stemNew(), n: 0 }; all[w] = st; store.set(SEQ_K, all) }   // 처음 · 번호 값이 없음 · 깨짐 → 새 줄기 (적지 못해도 이 화면 안에서는 그대로 쓴다)
+  return mem[w] = st }
+function myStem() { return stemState().k }
+function seqNext() {                                  // 다음 번호를 먼저 적고 낸다. 적지 못하면(저장 공간이 꽉 참) 이 화면에서만 쓰는 새 줄기로 바꿔 그 줄기로 낸다
+  const w = pendWho(), all = store.get(SEQ_K, {}) || {}, r = all[w], ok = r && /^[a-z0-9]{8,24}$/.test(r.k || "") && Number.isInteger(r.n) && r.n >= 0;
+  let st = stemState();
+  if (ok && !st.mem && r.k !== st.k) st = stemState.m[w] = { k: r.k, n: r.n };   // 다른 창이 줄기를 새로 만들었으면 그 줄기를 따른다
+  const n = Math.max(st.n, ok && r.k === st.k ? r.n : 0) + 1;   // 같은 브라우저의 다른 창이 낸 번호를 다시 읽어, 큰 쪽에서 1을 더한다 (겹치거나 뒤로 가지 않게)
+  all[w] = { k: st.k, n };
+  if (store.set(SEQ_K, all) || st.mem) { st.n = n; return n }   // 적었다 · 또는 이미 이 화면만의 줄기(적힌 줄기의 번호는 그대로 — 다시 열면 적힌 줄기의 적힌 번호부터라 작아지지 않는다)
+  const ns = { k: stemNew(), n: 1, mem: true }; stemState.m[w] = ns; return 1 }   // 적힌 줄기의 번호를 넘지 않게, 새 줄기로 (서버는 모르는 줄기 → 사본)
+function seqFor(X, peek) {                            // 이 저장(견적 번호 + 저장 시각)의 번호. peek = 새 번호를 내지 않고 이 견적에 대해 낸 가장 큰 번호(없으면 0)
+  const k = myStem(), at = X.savedAt || "", pre = k + "|" + X.id + "|", M = store.get("sido_box_ats", {}) || {}, mm = seqFor.m || (seqFor.m = {});
+  const hit = mm[pre + at] || M[pre + at];
+  if (hit) return hit;
+  if (peek) { let mx = 0; for (const o of [M, mm]) for (const key in o) if (key.startsWith(pre) && o[key] > mx) mx = o[key]; return mx }
+  const c = seqNext(), k2 = myStem(), key = k2 + "|" + X.id + "|" + at;   // (적지 못해 줄기가 바뀌었으면 새 줄기로 적는다)
+  mm[key] = c; delete M[key]; M[key] = c; const ks = Object.keys(M); for (const x of ks.slice(0, Math.max(0, ks.length - SEQ.MEM))) delete M[x]; store.set("sido_box_ats", M);
+  return c }
+function seqSeen(X) {                                 // 이 견적에 대해 이 줄기로 낸 번호들 [[번호, 저장 시각] …] (회사에 직접 저장할 때 같이 보낸다 · 20개까지)
+  const pre = myStem() + "|" + X.id + "|", M = Object.assign({}, store.get("sido_box_ats", {}) || {}, seqFor.m || {}), out = [];
+  for (const key in M) if (key.startsWith(pre)) out.push([M[key], key.slice(pre.length)]);
+  return out.sort((a, b) => a[0] - b[0]).slice(-20) }
+function boxPut(X) {                                  // 한 번에 하나씩 차례로 올린다 (부른 때의 내용으로)
+  if (!boxOn() || !X || !X.id) return Promise.resolve(null); const Y = deep(X); Y._boxSeq = seqFor(X); Y._boxStem = myStem();   // 번호는 부른 때 바로 정한다 (차례를 기다리는 사이 새 저장이 와도 옛 판이 새 번호를 받지 않게)
+  return boxPut.q = (boxPut.q || Promise.resolve()).then(() => boxPut1(Y)).catch(() => null) }
+async function boxPut1(X) {
+  const S = frontSess() || {}, w = store.get("sido_srv_who", {}) || {}, login = String(w.login || "").replace(/\s+/g, "").toLowerCase();
+  const sig = sigH(estSig(X)) + "|" + (X.savedAt || ""), old = boxOf(X.id);
+  if (old && old.st === "up" && old.sig === sig) return "up";   // 내용 · 저장 시각이 같으면 다시 올리지 않는다
+  const mark = (st, why) => { srvMap(BOX_K, X.id, { st, why: why || "", sig, a: X.savedAt || "", who: pendWho() }); srvChip(); if ($("#view-saved") && !$("#view-saved").hidden) renderSaved(); return st };
+  if (!login) return mark("local", "proof");
+  try {
+    const body = { ...X, savedBy: w.name || X.savedBy || "" }; delete body._owner; delete body._boxSeq; delete body._boxStem;
+    const key = await crypto.subtle.importKey("raw", b64u8(S.mir.key), "AES-GCM", false, ["encrypt"]), iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode("sido-box|" + login + "|" + X.id) }, key, new TextEncoder().encode(JSON.stringify(body))));
+    const blob = new Uint8Array(15 + ct.length); blob.set([83, 66, 49]); blob.set(iv, 3); blob.set(ct, 15);   // "SB1" + nonce 12 + 암호문 (서버 box_open 과 같다)
+    if (blob.length > BOX_MAX) return mark("local", "big");
+    const z = blob.length, n = Math.ceil(z / BOX_PART), v = [...crypto.getRandomValues(new Uint8Array(8))].map(b => "abcdefghijkmnpqrstuvwxyz23456789"[b % 32]).join(""), b = srvMap("sido_srv_base", X.id) || "";
+    const hk = await crypto.subtle.importKey("raw", new TextEncoder().encode("sido-box-v1|" + S.off), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    for (let i = 0; i < n; i++) { const part = blob.slice(i * BOX_PART, Math.min(z, (i + 1) * BOX_PART)), h = hexOf(await crypto.subtle.digest("SHA-256", part));
+      let r, j = {};
+      for (let k = 0; k < 2; k++) { const t = Math.floor(Date.now() / 1000) + (boxPut1.skew || 0), o = { l: login, e: X.id, v, i, n, z, h, a: X.savedAt || "", b, k: X._boxStem || myStem(), c: String(X._boxSeq || seqFor(X)), t };
+        const s = hexOf(await crypto.subtle.sign("HMAC", hk, new TextEncoder().encode(["put", o.l, o.e, o.v, o.i, o.n, o.z, o.h, o.a, o.b, o.k, o.c, o.t].join("|"))));   // 문지기 keeper.js 의 boxMsg 와 같다 (k = 이 기기의 줄기 표시)
+        const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 30000);
+        try { r = await fetch(FRONT.gate + "/box/put?" + new URLSearchParams({ ...o, s }).toString(), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: part, signal: ac.signal, cache: "no-store" }); j = await r.json().catch(() => ({})) } finally { clearTimeout(tm) }
+        if (r.status === 409 && j.error === "clock" && +j.now) { boxPut1.skew = +j.now - Math.floor(Date.now() / 1000); continue } break }   // 기기 시계가 많이 다르면 문지기 시각에 맞춰 한 번 더
+      if (r.ok && j.done) break;
+      if (!r.ok) return mark("local", r.status === 413 ? "big" : r.status === 429 ? "quota" : r.status === 401 ? "proof" : r.status === 409 ? "clock" : "net") }
+    return mark("up");
+  } catch (e) { return mark("local", "net") } }
+function boxUp() {                                    // 회사 컴퓨터가 켜져 있는가 (문지기가 대신 물어봐 준다 · 1분에 한 번까지) → SRV.boxUp = true | false | null
+  if (!FRONT || !FRONT.box || !SRV || !SRV.down || Date.now() - (boxUp.t || 0) < 60000) return; boxUp.t = Date.now();
+  fetch(FRONT.gate + "/up", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => { const u = j && typeof j.up === "boolean" ? j.up : null; if (u !== SRV.boxUp) { SRV.boxUp = u; srvChip(); if ($("#view-saved") && !$("#view-saved").hidden) renderSaved() } }).catch(() => {}) }
+function boxSay() { return typeof SRV !== "undefined" && SRV && SRV.boxUp ? "회사 컴퓨터는 켜져 있습니다 · 몇 분 안에 올라갑니다" : "회사 컴퓨터가 켜지면 가져갑니다" }
+const boxCount = () => { const ids = pendIds(); let up = 0; for (const id of ids) { const v = boxOf(id); if (v && v.st === "up") up++ } return { up, local: ids.length - up } };
 function srvChip() {                                  // 화면 위 표시: 연결됨 · 회사 컴퓨터 꺼짐(이 기기에 저장 중) · 다시 로그인
   if (!SRV || !document.querySelector(".topin")) return; for (const id of ["#srvChip", "#srvOut", "#srvChk"]) { const old = $(id); if (old) old.remove() }
   const down = !!(SRV.token && SRV.down), n = down ? pendIds().length : 0, w = SRV.me || (SRV.token ? store.get("sido_srv_who", {}) || {} : {});
   const who = SRV.me && SRV.me.role === "admin" ? "관리자" : w.name ? esc(w.name) + " 실장님" : "", lg = SRV.token && w.login ? ` (${esc(w.login)})` : "";   // (v65) 누가 로그인했는지 오른쪽 위에: ‘박재성 실장님 (sido100) 로그인 중’
-  const txt = down ? `${who ? who + " · " : ""}${SRV.disk ? "회사 저장 디스크 응답 없음" : SRV.lna ? "이 브라우저가 회사 연결을 막음" : "회사 컴퓨터 꺼짐"} · 이 기기에 저장 중${n ? ` (올릴 견적 ${n}건)` : ""}` : SRV.me ? (SRV.token ? `<b>${who}</b>${lg} 로그인 중` : "회사 저장소 연결 · 관리자" + (ADM_OUT && SRV.me.dev ? ` (${esc(SRV.me.dev)})` : "")) : SRV.token ? "회사 저장소 연결 안 됨 · 눌러서 다시 로그인" : ADM_OUT ? "관리자 로그인이 풀림 · 눌러서 다시 들어가기" : "회사 저장소: 관리자 키 필요";
-  const at = down ? ` data-srvretry role="button" tabindex="0" style="cursor:pointer" title="${SRV.disk ? "회사 컴퓨터는 켜져 있지만 저장 디스크(외장 하드)가 대답하지 않습니다. 디스크가 돌아오면" : "회사 컴퓨터가 켜지면"} 이 화면이 다시 연결되고, 그동안 이 기기에 저장한 견적도 회사 저장소에 올라갑니다 (이 기기에서 프로그램이 열려 있어야 합니다). 누르면 지금 다시 연결해 봅니다"` : SRV.me ? (SRV.token ? ' title="로그인돼 있습니다. 저장한 견적은 회사에도 보관됩니다"' : ' title="회사 저장소에 연결돼 있습니다. 저장한 견적은 회사 저장소에 올라갑니다"') : SRV.token ? ' data-srvout role="button" tabindex="0" style="cursor:pointer" title="누르면 로그인 화면으로 갑니다"' : ADM_OUT ? ' data-admre role="button" tabindex="0" style="cursor:pointer" title="들어온 지 12시간이 지났거나 다른 곳에서 잠갔습니다. 누르면 관리자 비밀번호를 다시 넣는 화면으로 갑니다 (쓰던 내용은 이 기기에 남아 있습니다)"' : "";
+  const bxm = down && FRONT && FRONT.box, dst = SRV.disk ? "회사 저장 디스크 응답 없음" : SRV.lna ? "이 브라우저가 회사 연결을 막음" : SRV.boxUp ? "회사 컴퓨터에 닿지 않음" : "회사 컴퓨터 꺼짐";   // (v105) 보관함을 쓰면 화면 위 표시는 짧게 — 풀이는 마우스를 올렸을 때(title)와 저장할 때의 안내 글로
+  const txt = bxm ? dst + (n ? (bc => (bc.up ? ` · 보관함에 올림 ${bc.up}건` : "") + (bc.local ? ` · 이 기기에만 ${bc.local}건` : ""))(boxCount()) : "") : down ? `${who ? who + " · " : ""}${dst} · 이 기기에 저장 중${n ? ` (올릴 견적 ${n}건)` : ""}` : SRV.me ? (SRV.token ? `<b>${who}</b>${lg} 로그인 중` : "회사 저장소 연결 · 관리자" + (ADM_OUT && SRV.me.dev ? ` (${esc(SRV.me.dev)})` : "")) : SRV.token ? "회사 저장소 연결 안 됨 · 눌러서 다시 로그인" : ADM_OUT ? "관리자 로그인이 풀림 · 눌러서 다시 들어가기" : "회사 저장소: 관리자 키 필요";
+  const at = bxm ? ` data-srvretry role="button" tabindex="0" style="cursor:pointer" title="${who ? who.replace(/<[^>]+>/g, "") + " · " : ""}보관함에 올린 견적은 ${SRV.boxUp ? "몇 분 안에 회사로 올라갑니다 (회사 컴퓨터는 켜져 있습니다)" : "회사 컴퓨터가 켜지면 가져갑니다"}. ‘이 기기에만’ 있는 견적은 회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 올라갑니다. 누르면 지금 다시 연결해 봅니다"` : down ? ` data-srvretry role="button" tabindex="0" style="cursor:pointer" title="${SRV.disk ? "회사 컴퓨터는 켜져 있지만 저장 디스크(외장 하드)가 대답하지 않습니다. 디스크가 돌아오면" : "회사 컴퓨터가 켜지면"} 이 화면이 다시 연결되고, 그동안 이 기기에 저장한 견적도 회사 저장소에 올라갑니다 (이 기기에서 프로그램이 열려 있어야 합니다). 누르면 지금 다시 연결해 봅니다"` : SRV.me ? (SRV.token ? ' title="로그인돼 있습니다. 저장한 견적은 회사에도 보관됩니다"' : ' title="회사 저장소에 연결돼 있습니다. 저장한 견적은 회사 저장소에 올라갑니다"') : SRV.token ? ' data-srvout role="button" tabindex="0" style="cursor:pointer" title="누르면 로그인 화면으로 갑니다"' : ADM_OUT ? ' data-admre role="button" tabindex="0" style="cursor:pointer" title="들어온 지 12시간이 지났거나 다른 곳에서 잠갔습니다. 누르면 관리자 비밀번호를 다시 넣는 화면으로 갑니다 (쓰던 내용은 이 기기에 남아 있습니다)"' : "";
   document.querySelector(".topin").insertAdjacentHTML("beforeend", `<span class="chip ${SRV.me && !down ? "ok" : "warn"}" id="srvChip"${at}>${txt}</span>${(SRV.me && SRV.token && !down) || (SRV.front && down && SRV.token !== "0") ? '<span class="chip" id="srvOut" data-srvout role="button" tabindex="0" style="cursor:pointer" title="다른 아이디로 들어가거나, 여럿이 쓰는 컴퓨터에서 쓰고 난 뒤에 누르세요">로그아웃</span>' : SRV.me && ADM_OUT ? '<span class="chip" id="srvOut" data-admout role="button" tabindex="0" style="cursor:pointer" title="관리자 화면을 잠급니다. 다시 열려면 관리자 비밀번호를 넣어야 합니다. 자리를 비울 때 누르세요">잠그기</span>' : ""}`);
   const chk = SRV.token ? markIds(CLASH_K).length + markIds(FAIL_K).length : 0;   // (v104) 회사에 올라가지 않은 견적(겹침 · 거절) — 누르면 ‘저장된 견적’
   if (chk) document.querySelector(".topin").insertAdjacentHTML("beforeend", `<span class="chip warn" id="srvChk" data-act="savedgo" role="button" tabindex="0" style="cursor:pointer" title="회사에 올라가지 않은 견적입니다. ‘저장된 견적’에서 그 줄의 표시를 보고 열어서 확인해 주세요">확인할 견적 ${chk}건</span>`);
   if (!SRV.front && SRV.token && SRV.me && SRV.me.front && !$("#frontTip")) document.querySelector(".topin").insertAdjacentHTML("beforeend", `<a class="chip ok" id="frontTip" href="${esc(SRV.me.front + (SRV.me.off && !SRV.me.gate ? "#u=" + SRV.me.off : ""))}" target="_blank" rel="noopener" style="text-decoration:none" title="회사 컴퓨터가 꺼져 있어도 열리는 주소입니다. 아이디·비밀번호는 같고, 회사에 보관된 내 견적이 그대로 보입니다. 즐겨찾기를 이 주소로 바꿔 주세요">꺼져 있어도 열리는 새 주소 →</a>`);   // (v81)
 }
-function srvLost() { if (!SRV || !SRV.token || SRV.down) return; SRV.down = true; if (SRV.front) mirLoad(); srvChip(); const eb = document.querySelector(".estbar"); if (eb) eb.outerHTML = estBar(); if ($("#view-saved") && !$("#view-saved").hidden) renderSrv() }   // 쓰는 중에 서버가 대답하지 않게 됐다
+function srvLost() { if (!SRV || !SRV.token || SRV.down) return; SRV.down = true; if (SRV.front) { mirLoad(); boxUp() } srvChip(); const eb = document.querySelector(".estbar"); if (eb) eb.outerHTML = estBar(); if ($("#view-saved") && !$("#view-saved").hidden) renderSrv() }   // 쓰는 중에 서버가 대답하지 않게 됐다
 function swKeep() {                                   // 이 기기에 화면 파일을 기억시켜 둔다 (연결될 때마다 새 판으로 갈아 둔다)
   try { if (swKeep.done || !SRV || !SRV.token || !HELP_BASE || !("serviceWorker" in navigator)) return; swKeep.done = true;
     navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready).then(reg => { if (reg && reg.active) reg.active.postMessage({ keep: HELP_BASE }) }).catch(() => { swKeep.done = false }) } catch (e) { } }
@@ -6032,7 +6113,7 @@ async function srvRetry(byUser) {                     // 끊긴 회사 컴퓨터
     if (!!SRV.disk !== bad) { SRV.disk = bad; srvChip() }
     if (bad) throw 1;
     await srvConnect(); if (SRV.me && !pendIds().length) toast("회사 컴퓨터에 다시 연결됐습니다.") }
-  catch (e) { if (byUser) toast(SRV.disk ? "회사 컴퓨터의 저장 디스크가 아직 대답하지 않습니다. 돌아오면 저절로 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다." : SRV.lna ? "이 브라우저가 회사 컴퓨터로 가는 연결을 막고 있습니다. 화면의 ‘회사 주소로 열기’를 눌러 주세요." : "아직 회사 컴퓨터에 연결되지 않습니다. 이 화면을 열어 두면 켜졌을 때 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다.") }
+  catch (e) { boxUp(); if (byUser) toast(SRV.disk ? "회사 컴퓨터의 저장 디스크가 아직 대답하지 않습니다. 돌아오면 저절로 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다." : SRV.lna ? "이 브라우저가 회사 컴퓨터로 가는 연결을 막고 있습니다. 화면의 ‘회사 주소로 열기’를 눌러 주세요." : "아직 회사 컴퓨터에 연결되지 않습니다. 이 화면을 열어 두면 켜졌을 때 다시 연결됩니다. 그동안 쓴 내용은 이 기기에 남습니다.") }
   finally { srvRetry.busy = false }
 }
 setInterval(() => { if (SRV && SRV.token && SRV.down && document.visibilityState !== "hidden") srvRetry() }, 30000);
@@ -6041,9 +6122,9 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 document.addEventListener("click", ev0 => { if (ev0.target.closest && ev0.target.closest("[data-srvretry]")) srvRetry(true) });
 async function srvConnect() {
   if (!SRV) return;
-  try { SRV.me = await srv("GET", "/api/me"); SRV.down = false; SRV.disk = false; SRV.lna = false; SRV.mirErr = ""; if (SRV.front) frontKeep(SRV.me); if (SRV.me.role === "staff") store.set("sido_srv_who", { id: SRV.me.id, name: SRV.me.name, login: SRV.me.login || "" }); if (SRV.me.role === "staff" && !E.info.manager) { E.info.manager = SRV.me.name; save(); if ($("#info")) renderInfo() } }
+  try { SRV.me = await srv("GET", "/api/me"); SRV.down = false; SRV.disk = false; SRV.lna = false; SRV.mirErr = ""; SRV.boxUp = null; if (SRV.front) frontKeep(SRV.me); if (SRV.me.role === "staff") store.set("sido_srv_who", { id: SRV.me.id, name: SRV.me.name, login: SRV.me.login || "" }); if (SRV.me.role === "staff" && !E.info.manager) { E.info.manager = SRV.me.name; save(); if ($("#info")) renderInfo() } }
   catch (e) { SRV.me = null; SRV.down = !!SRV.token && (!e.status || e.status >= 500); if (SRV.front && e.status === 401 && SRV.token !== "0") { frontAfter.exp = true; frontOut() }
-    if (SRV.front && SRV.down && !e.status && !e.timeout) await lnaCheck() }   // (v104) 대답이 아예 없었으면: 이 브라우저가 막은 것인지 본다 · 대답이 없거나 5xx = 회사 컴퓨터가 꺼져 있음 (401 = 로그인이 풀림)
+    if (SRV.front && SRV.down && !e.status && !e.timeout) await lnaCheck(); if (SRV.front && SRV.down) boxUp() }   // (v105) 회사 컴퓨터가 정말 꺼져 있는지 문지기에게 묻는다 · (v104) 대답이 아예 없었으면: 이 브라우저가 막은 것인지 본다 · 대답이 없거나 5xx = 회사 컴퓨터가 꺼져 있음 (401 = 로그인이 풀림)
   if (SRV.me && SRV.me.ai && !KB_AI) { KB_AI = srvAi; try { helpDraw() } catch (e) { } }   // 서버에 AI 키가 있으면 회사 주소의 챗봇도 AI 로 답한다 (없으면 저장된 답만)
   if (ADM_OUT && location.search) { try { history.replaceState(null, "", "/admin/") } catch (e) { } }
   if (SRV.token && SRV.me && !SRV.front) { try { history.replaceState(null, "", "/") } catch (e) { } }   // 주소 칸에 로그인 열쇠가 남지 않게 한다 — 주소를 복사해 남에게 보내도 로그인까지 넘어가지 않는다. 새로 고치면 첫 화면이 이 기기에 남은 열쇠로 다시 들여보낸다
@@ -6070,7 +6151,7 @@ const sigH = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + 
 const srvOwnOf = X => SRV.me.role === "admin" ? (srvMap("sido_srv_owner", X.id) || "admin") : SRV.me.id, srvOwn = () => srvOwnOf(E);   // 지금 견적이 회사 저장소에서 누구 것인가 (관리자가 실장의 견적을 열었으면 그 실장)
 const srvDirty = () => sigH(estSig(E)) !== srvMap("sido_srv_sig", E.id);                                   // 회사 저장소와 맞춘 뒤에 여기서 고친 것이 있는가
 const whoSay = w => !w ? "다른 곳에서" : w === "관리자" ? "관리자가" : SRV.me && w === SRV.me.name ? "다른 기기에서" : w + " 님이";
-function srvSynced(at, X) { X = X || E; srvMap("sido_srv_base", X.id, at || ""); srvMap("sido_srv_sig", X.id, sigH(estSig(X))); srvMap(FAIL_K, X.id, null); srvMap(CLASH_K, X.id, null); /* (v104) 회사와 맞췄으니 ‘확인할 견적’ 표시도 지운다 */ if (X.id === E.id) { const c = $("#srvNewer"); if (c) c.remove() } }   // 지금 화면의 견적이 회사 저장소와 같아졌다
+function srvSynced(at, X) { X = X || E; srvMap("sido_srv_base", X.id, at || ""); srvMap("sido_srv_sig", X.id, sigH(estSig(X))); srvMap(FAIL_K, X.id, null); srvMap(CLASH_K, X.id, null); srvMap(BOX_K, X.id, null); /* (v105) 보관함 표시도 · (v104) 회사와 맞췄으니 ‘확인할 견적’ 표시도 지운다 */ if (X.id === E.id) { const c = $("#srvNewer"); if (c) c.remove() } }   // 지금 화면의 견적이 회사 저장소와 같아졌다
 function srvNewerChip() {                            // 화면 위에 ‘회사 저장소에 더 새 내용’을 띄운다 — 누르면 그 내용으로 바꾼다 (여기서 고치던 것은 따로 남긴다)
   if ($("#srvNewer")) return;
   document.querySelector(".topin").insertAdjacentHTML("beforeend", '<span class="chip warn" id="srvNewer" role="button" tabindex="0" style="cursor:pointer" title="이 견적을 다른 곳(관리자 또는 다른 기기)에서 고쳐 저장했습니다. 누르면 그 내용으로 바꿉니다. 여기서 고치던 내용은 ‘저장된 견적’에 따로 남습니다">회사 저장소에 더 새 내용 · 눌러서 불러오기</span>');
@@ -6098,17 +6179,19 @@ document.addEventListener("visibilitychange", () => {   // 다른 일을 하다 
 });
 async function srvSave(force, prevAt, X0) { const X = X0 || E;   // X0 = 올릴 견적 (임시저장하고 다른 견적으로 넘어갈 때는 그 사이 E 가 바뀌므로 잡아 둔 것을 쓴다)              // prevAt = 이 기기에서 이 견적을 바로 전에 저장한 때 (맞춘 기록이 없는 견적은 이것과 견준다)
   if (!SRV) return null;
-  if (!SRV.me || SRV.down) { pendAdd(X); return null }   // (v64) 연결이 끊겨 있으면 이 기기에만 두고 ‘올릴 것’으로 적어 둔다 (관리자 화면은 적지 않는다 — pendAdd 가 실장 화면만 받는다)
+  if (!SRV.me || SRV.down) { pendAdd(X); if (SRV.down) await boxPut(X); return null }   // (v105) 꺼져 있으면 바깥 보관함에도 올린다 · (v64) 연결이 끊겨 있으면 이 기기에만 두고 ‘올릴 것’으로 적어 둔다 (관리자 화면은 적지 않는다 — pendAdd 가 실장 화면만 받는다)
   try {
     const own = srvOwnOf(X);
     if (!force) {                                    // 그 사이에 다른 곳에서 저장한 것이 있으면 덮어쓰지 않고 먼저 알린다
       const cur = (await srv("GET", "/api/est")).find(x => x.id === X.id && x.owner === own);
-      if (cur && cur.savedAt && cur.savedAt !== (srvMap("sido_srv_base", X.id) || prevAt || "")) { const who = cur.savedBy || ""; if (X.id === E.id) srvNewerChip(); if (SRV.token) { srvMap(CLASH_K, X.id, { who: pendWho(), at: cur.savedAt, by: who }); srvChip() } return { clash: true, at: cur.savedAt, who } }   // (v104) 겹친 견적은 ‘확인할 견적’으로 남긴다 — 조용히 사라지지 않게
+      if (SRV.token && cur && cur.savedAt && X.savedAt && cur.savedAt === X.savedAt) { srvSynced(X.savedAt, X); keepPut(X); srvMap(PEND_K, X.id, null); SRV.list = null; srvChip(); return true }   // (v105) 바깥 보관함으로 이미 올라간 것(같은 저장 시각) — 겹침이 아니다 · 두 벌이 생기지 않게 다시 올리지 않는다
+      const bx = SRV.token && cur ? boxOf(X.id) : null, mine = !!(SRV.token && cur && ((cur.stem && cur.stem === myStem() && Number.isInteger(cur.seq) && cur.seq <= seqFor(X, true)) ||(bx && bx.st === "up" && bx.a && bx.a === cur.savedAt)));   // (v105) 회사에 있는 것이 이 기기에서 이어 온 판(줄기가 같음 · 보관함에 맡겼던 것)이면 겹침이 아니다
+      if (cur && cur.savedAt && !mine && cur.savedAt !== (srvMap("sido_srv_base", X.id) || prevAt || "")) { const who = cur.savedBy || ""; if (X.id === E.id) srvNewerChip(); if (SRV.token) { srvMap(CLASH_K, X.id, { who: pendWho(), at: cur.savedAt, by: who }); srvChip() } return { clash: true, at: cur.savedAt, who } }   // (v104) 겹친 견적은 ‘확인할 견적’으로 남긴다 — 조용히 사라지지 않게
     }
-    const body = { ...X, savedBy: SRV.me.name }; if (SRV.me.role === "admin" && own !== "admin") body._owner = own;   // 관리자가 실장의 견적을 고쳤으면 그 실장의 견적으로 저장한다
+    const body = { ...X, savedBy: SRV.me.name }; if (SRV.me.role === "admin" && own !== "admin") body._owner = own; if (SRV.token && SRV.me.role === "staff") { body._seq = seqFor(X); body._stem = myStem(); body._seen = seqSeen(X) }   /* 번호를 먼저 — 적지 못해 줄기가 바뀌면 바뀐 줄기를 보낸다 */   // (v105) 줄기 표시 — 서버는 견적 파일에 넣지 않고 이력에만 적는다   // 관리자가 실장의 견적을 고쳤으면 그 실장의 견적으로 저장한다
     await srv("PUT", "/api/est/" + X.id, body); srvSynced(X.savedAt, X); keepPut(X); if (SRV.token) srvMap(PEND_K, X.id, null); SRV.list = null; if (X.id === E.id) measPush(); srvChip(); return true
   } catch (e) { const st = e.status || 0;
-    if (!st || st >= 500) { if (st === 503 && e.body && e.body.error === "storage") SRV.disk = true; pendAdd(X); srvLost(); return false }   // 서버가 대답하지 않으면 올릴 것으로 적어 두고 ‘꺼짐’으로 바꾼다 → 30초마다 다시 연결해 본다
+    if (!st || st >= 500) { if (st === 503 && e.body && e.body.error === "storage") SRV.disk = true; pendAdd(X); srvLost(); await boxPut(X); return false }   // (v105) 바깥 보관함에도 · 서버가 대답하지 않으면 올릴 것으로 적어 두고 ‘꺼짐’으로 바꾼다 → 30초마다 다시 연결해 본다
     if (!SRV.token) return false;                     // 관리자 화면은 전과 같다
     if (st === 401 && SRV.token !== "0") { pendAdd(X); srvAuthLost(); return { auth: true } }   // (v104) 로그인이 풀림: ‘올릴 견적’으로 남겨 두고, 같은 실장으로 다시 로그인하면 올라간다
     const why = failWhy(st); srvMap(FAIL_K, X.id, { st, why, who: pendWho() }); srvChip(); return { fail: st, why } }   // (v104) 그 밖의 거절: 다시 해도 안 되므로 ‘올라가지 않음’으로 남기고 사실대로 알린다
@@ -6123,7 +6206,11 @@ function srvAuthLost() {                              // (v104) 저장하다 로
 function upSay(r, w, id) {                            // (v104) 회사에 올렸는지 사실대로 — w = "저장" · "임시저장". true 는 부르는 쪽이 따로 말한다
   if (r && r.auth) return `이 기기에 ${w}했습니다. 로그인이 풀려 회사에는 아직 올라가지 않았습니다 · 다시 로그인하면 올라갑니다.`;
   if (r && r.fail) return `회사에 올라가지 않았습니다 · 이 기기에만 있습니다 (${r.why}). 관리자에게 알려 주세요.`;
-  if (srvMap(PEND_K, id || E.id)) return "이 견적은 아직 이 기기에만 있습니다 · 회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 올라갑니다.";
+  if (srvMap(PEND_K, id || E.id)) { const bx = boxOf(id || E.id);
+    if (SRV && SRV.token && !SRV.front && !SRV.me && !SRV.down) return `이 기기에 ${w}했습니다. 로그인이 풀려 회사에는 아직 올라가지 않았습니다 · 다시 로그인하면 올라갑니다.`;   // (v105) 회사 주소에서 로그인이 풀린 뒤의 저장 — 까닭을 바로 말한다
+    if (bx && bx.st === "up") return `이 기기에 ${w}했고 바깥 보관함에 올렸습니다 · ${boxSay()}.`;   // (v105)
+    if (bx && bx.st === "local") return `이 기기에만 ${w}했습니다 (${BOX_WHY[bx.why] || "보관함에 못 올림"}) · 회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 올라갑니다.`;
+    return "이 견적은 아직 이 기기에만 있습니다 · 회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 올라갑니다." }
   return r === false ? `이 기기에는 ${w}했지만 회사 저장소에는 올리지 못했습니다. 연결을 확인하세요.` : "" }
 const SENT_HOW = { print: "인쇄", export: "파일", copy: "엑셀복사", xlsx: "엑셀" };
 function srvSent(how) {                              // 고객에게 나가는 견적(인쇄·엑셀·파일)을 회사 저장소에 따로 남긴다 — 서버가 달·실장별로 쌓고, 같은 내용은 다시 남기지 않는다
@@ -6672,7 +6759,7 @@ function newEst(b) {                                  // 새 견적: 쓰던 견�
   E = blankEst(); if (D.stepLines) applyPreset2(0); else applyPreset(0); refresh(true); show(D.stepLines ? "check" : "est"); window.scrollTo({ top: 0 }); toast((kept ? kept + " " : "") + "새 견적을 시작합니다."); return true }
 function estBar() {                                   // 현장 정보 맨 위: 지금 쓰는 견적 · 새 견적 만들기 · 임시저장 · 이어 쓰기
   const L = store.get("sido3_list", []), cur = L.find(x => x.id === E.id), nm = E.info.client || E.info.site || "";
-  return `<div class="estbar"><div class="esn"><div class="esh"><b>${nm ? esc(nm) + " 견적 작성 중" : "새 견적 작성 중"}</b>${cur ? ` <span class="chip ${cur.draft ? "warn" : "ok"}">${cur.draft ? "임시저장 목록에 있음" : "저장된 견적에 있음"}</span>` : ""}${storeWarn()}</div><span class="note">쓰는 내용은 이 기기에 자동으로 남아, 창을 닫았다 열어도 이어집니다.${typeof SRV !== "undefined" && SRV && SRV.me && SRV.me.role === "staff" ? ` <b>회사에도 ${AUTO_MIN}분마다 저절로 임시저장됩니다</b>${autoStash.at ? ` (방금 ${String(autoStash.at.getHours()).padStart(2, "0")}:${String(autoStash.at.getMinutes()).padStart(2, "0")})` : ""} — 저장해 둔 견적을 고칠 때는 ‘저장’을 눌러야 바뀝니다.` : typeof SRV !== "undefined" && SRV && SRV.token && SRV.down ? " <b>지금 쓰는 견적은 아직 이 기기에만 있습니다.</b> 회사 컴퓨터가 켜져 있을 때 <b>이 기기에서</b> 프로그램을 열어야 올라갑니다." : ""} 다른 고객 견적은 ‘새 견적 만들기’로 시작하세요 — 쓰던 견적은 지워지지 않고 ‘저장된 견적’에 남습니다.</span></div>
+  return `<div class="estbar"><div class="esn"><div class="esh"><b>${nm ? esc(nm) + " 견적 작성 중" : "새 견적 작성 중"}</b>${cur ? ` <span class="chip ${cur.draft ? "warn" : "ok"}">${cur.draft ? "임시저장 목록에 있음" : "저장된 견적에 있음"}</span>` : ""}${storeWarn()}</div><span class="note">쓰는 내용은 이 기기에 자동으로 남아, 창을 닫았다 열어도 이어집니다.${typeof SRV !== "undefined" && SRV && SRV.me && SRV.me.role === "staff" ? ` <b>회사에도 ${AUTO_MIN}분마다 저절로 임시저장됩니다</b>${autoStash.at ? ` (방금 ${String(autoStash.at.getHours()).padStart(2, "0")}:${String(autoStash.at.getMinutes()).padStart(2, "0")})` : ""} — 저장해 둔 견적을 고칠 때는 ‘저장’을 눌러야 바뀝니다.` : typeof SRV !== "undefined" && SRV && SRV.token && SRV.down ? (FRONT && FRONT.box ? ` <b>지금은 회사 컴퓨터에 닿지 않아, ‘저장’·‘임시저장’하면 바깥 보관함에 올려 둡니다</b> — ${boxSay()}.` : " <b>지금 쓰는 견적은 아직 이 기기에만 있습니다.</b> 회사 컴퓨터가 켜져 있을 때 <b>이 기기에서</b> 프로그램을 열어야 올라갑니다.") : ""} 다른 고객 견적은 ‘새 견적 만들기’로 시작하세요 — 쓰던 견적은 지워지지 않고 ‘저장된 견적’에 남습니다.</span></div>
     <div class="esb"><button type="button" class="btn primary" data-act="new">＋ 새 견적 만들기</button><button type="button" class="btn" data-act="draft">임시저장</button><button type="button" class="btn" data-act="savedgo">저장된 견적${savedCount() ? " " + savedCount() + "건" : ""} · 이어 쓰기</button></div></div>`;
 }
 function storeUse(force) {                            // 이 기기(브라우저) 저장 공간을 얼마나 썼는지. 크롬은 한 주소에 약 524만 글자까지 (그림이 든 견적 한 건이 10~30만 글자)
@@ -6767,11 +6854,15 @@ function savedRowHtml(r) {
   const info = v ? { client: v.client, site: v.site, kind: v.kind, ver: v.ver, draft: v.draft } : { client: x.info.client, site: x.info.site, kind: x.info.kind, ver: x.info.ver, draft: x.draft };
   const pv = SRV && SRV.token ? srvMap(PEND_K, x.id) : null, pend = r.pend || !!(pv && (pv === "?" || pv === pendWho() || pendWho() === "?"));   // (v104) 사본 목록이 없을 때(꺼짐)도 ‘올릴 견적’ 표시를 보인다
   const F = SRV ? markOf(FAIL_K, x.id) : null, C = SRV ? markOf(CLASH_K, x.id) : null;   // (v104) 회사가 받지 않음 · 다른 곳과 겹쳐 올리지 않음
+  const bx = pend && SRV ? boxOf(x.id) : null;   // (v105) 바깥 보관함에 올렸는가
+  const pc = bx && bx.st === "up" ? `<span class="chip ok" title="잠가서 바깥 보관함에 올려 두었습니다. 회사 컴퓨터가 켜지면 회사 저장소로 가져갑니다 — 이 기기를 다시 열지 않아도 됩니다">바깥 보관함에 올림 · ${boxSay()}</span>`
+    : bx && bx.st === "local" ? `<span class="chip warn" title="바깥 보관함에 올리지 못했습니다. 회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 올라갑니다">이 기기에만 있음 · ${BOX_WHY[bx.why] || "보관함에 못 올림"}</span>`
+    : '<span class="chip warn" title="회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 회사에 올라갑니다">아직 이 기기에만 있음 · 회사 컴퓨터가 켜졌을 때 이 기기에서 열면 올라감</span>';
   const mk = F ? `<span class="chip warn" title="${esc(F.why || "")} — 이 견적은 이 기기에만 있습니다. 관리자에게 알려 주세요">회사에 안 올라감 · 이 기기에만 있음</span>`
     : C ? `<span class="chip warn" title="${esc(whoSay(C.by))} ${esc(fmtAt(C.at))}에 저장한 더 새 내용이 회사에 있어 이 기기의 내용을 올리지 않았습니다. 열어서 ‘저장’을 누르면 어느 쪽을 남길지 고를 수 있습니다">겹침 · 확인 필요 (이 기기 내용은 안 올라감)</span>` : "";
-  const st = mk + (!stfMerge() ? (pend ? '<span class="chip warn" title="회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 회사에 올라갑니다">아직 이 기기에만 있음 · 회사 컴퓨터가 켜졌을 때 이 기기에서 열면 올라감</span>' : "") : v ? '<span class="chip warn" title="다른 기기나 관리자가 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · 열면 그 내용</span>'
+  const st = mk + (!stfMerge() ? (pend ? pc : "") : v ? '<span class="chip warn" title="다른 기기나 관리자가 고쳐 저장했습니다. ‘열기’를 누르면 그 내용이 열립니다">다른 곳에서 고침 · 열면 그 내용</span>'
     : r.both ? '<span class="chip warn" title="이 기기에서 고친 내용과, 다른 곳(다른 기기·관리자)에서 고쳐 저장한 내용이 서로 다릅니다. 둘 다 열어 볼 수 있습니다">다른 곳에서도 고침</span>'
-    : pend ? '<span class="chip warn" title="회사 컴퓨터가 켜져 있을 때 이 기기에서 프로그램을 열어야 회사에 올라갑니다">아직 이 기기에만 있음 · 회사 컴퓨터가 켜졌을 때 이 기기에서 열면 올라감</span>'
+    : pend ? pc
     : r.ahead ? '<span class="chip warn" title="이 기기에서 고친 내용이 회사에는 아직 올라가지 않았습니다. 열어서 ‘저장’을 누르면 올라갑니다">회사에 아직 안 올라감</span>'
     : !s && !mk ? '<span class="chip" title="이 기기에만 있는 견적입니다. 열어서 ‘저장’이나 ‘임시저장’을 누르면 회사에도 보관되어 다른 기기에서도 보입니다">이 기기에만 있음</span>' : "");
   const open = v ? `<button class="btn sm${v.draft ? " primary" : ""}" data-srvopen="${ok}" data-sync="1">${v.draft ? "이어 쓰기" : "열기"}</button>` : savedOpenBtn(x) + (r.both && !cur ? `<button class="btn sm" data-srvopen="${ok}" title="다른 기기나 관리자가 고쳐 저장한 내용을 엽니다. 이 기기에서 고친 내용은 이 줄에 그대로 남습니다">다른 곳에서 고친 내용 열기</button>` : "");
