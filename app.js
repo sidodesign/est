@@ -1,7 +1,7 @@
 /* 시도디자인 견적 프로그램 v3 — 실장 페이지(APP_MODE="staff")와 관리자 페이지(APP_MODE="admin")가 같은 코드를 씁니다.
    데이터: data.js (window.SIDO_DATA). 실장용 data.js에는 원가가 없고 판매단가(price)와 마진율(m)만 있습니다. */
 "use strict";
-const APP_VER = "2026-11-28.102"
+const APP_VER = "2026-11-28.103"
 const DOC_KINDS = ["견적서", "가견적", "확정 견적", "변경 견적"];   // (v92) 견적서 구분 — 기본은 ‘견적서’ (화면을 그리기 전에 있어야 해서 맨 위에 둔다);                       // 이 프로그램의 판. app.js 를 고쳐 올릴 때마다 바꾼다 — 서버가 이 줄을 읽어(/api/ping) 열려 있는 화면에 ‘새로 바뀌었습니다 · 눌러서 새로 고침’을 띄운다
 const MODE = window.APP_MODE === "admin" ? "admin" : "staff";
 const $ = s => document.querySelector(s);
@@ -812,7 +812,7 @@ function show(v) {
   const slot = document.querySelector(`#view-${v} .sumslot`); if (slot) slot.appendChild($("#summary"));
   if (v === "est") { renderSpaces(); renderSpace() } if (v === "check") renderChecklist();
   if (v === "doc") renderDoc(); if (v === "saved") renderSaved();
-  if (v === "prices") renderPrices(); if (v === "settings") renderSettings(); if (v === "rules") renderRules(); if (v === "analysis") renderAnalysis();
+  if (v === "prices") { renderPrices(); if (typeof pfRender === "function") pfRender() } if (v === "settings") renderSettings(); if (v === "rules") renderRules(); if (v === "analysis") renderAnalysis();
 }
 function refresh(full) {
   if (full) applyPackages();
@@ -3563,7 +3563,8 @@ document.addEventListener("click", ev0 => { const t = ev0.target, r = t.closest(
   refresh(); toast(v ? "이 작업을 비교견적(별도)으로 돌렸습니다. 합계에는 들어가지 않습니다." : "이 작업을 합계에 넣었습니다.") });
 function adminPrice(name, v) {                        // 관리자: 품목의 기본 판매 단가를 바꾼다 (모든 견적에 적용 · ‘바꾼 단가 파일 받기’로 내보내 고정)
   const it = byName[name]; if (!it) return; if (v > 0) it.fixedPrice = v; else delete it.fixedPrice;
-  const pe = store.get("sido3_price_edits", {}); pe[name] = v; store.set("sido3_price_edits", pe); const ab = document.getElementById("applyData"); if (ab) ab.click(); else refresh(true);
+  { const all = peAll(), e = all[name] || {}, bi = pfBase()[name]; if (bi && v > 0 && v === pfBaseP(bi)) delete e.p; else e.p = v; all[name] = e; peSave(all) }   // (v103) ‘단가 고치기’ 표와 같은 보관 칸 (품목: { c 업체가, p 소비자가 })
+  const ab = document.getElementById("applyData"); if (ab) ab.click(); else refresh(true);
   toast(`‘${aliasOf(name)}’ 기본 단가를 ${won(v)}원으로 바꿨습니다. 실장 화면까지 고정하려면 ‘바꾼 단가 파일 받기’를 누르세요.`) }
 document.addEventListener("change", ev0 => { const el = ev0.target; if (el.dataset && el.dataset.apitem) adminPrice(el.dataset.apitem, +el.value || 0) });
 function workChooser(st) {
@@ -4097,6 +4098,7 @@ function renderSummary1() {
    ${(bd => bd._ok && Math.abs(R.sum - bd._sum) >= 1 ? `<div class="note" style="text-align:right;margin-top:4px">수량·종류를 고쳐서 ${dltChip(R.sum - bd._sum, "자동 계산보다")} <small>(${mgs ? "공정 합계" : "공사원가"} 기준)</small></div>` : "")(D.stepLines ? baseAmts() : {})}
    ${cmpSummary()}
    <div class="note" style="text-align:right">평당 ${won(R.net / (+E.py || 1))}원 · ㎡당 ${won(R.net / (R.S.supplyM2 || 1))}원 (VAT 별도)</div>
+   ${isAdmin && !STAFF_DATA && typeof pfSumNote === "function" ? pfSumNote() : ""}
    ${STAFF_DATA ? staffNote() : `<div class="meter ${R.net ? (m >= tgt ? "good" : "low") : ""}"><div class="note">예상 마진율 (기업이윤 포함)</div><div class="big">${R.net ? pct(m) : "-"}</div>
      <div class="bar"><i style="width:${Math.max(0, Math.min(100, m / 0.5 * 100))}%"></i><b style="left:${tgt / 0.5 * 100}%"></b></div>
      <div class="note" style="margin-top:6px">${!R.net ? "공사를 체크하면 계산됩니다." : m >= tgt ? `목표 ${pct(tgt)} 이상입니다.` : `목표 ${pct(tgt)}보다 낮습니다. 직접 입력한 단가나 수량을 확인하세요.`}</div></div>`}
@@ -4129,8 +4131,7 @@ document.addEventListener("click", ev0 => {
   if (a === "nextver") { E.info.ver = (+E.info.ver || 1) + 1; renderDoc(); save(); toast(`v${E.info.ver}로 올렸습니다.`) }
   if (a === "export") snapshotPrices(), save(), download(`견적_${E.info.client || "고객"}_${kindTag()}v${E.info.ver}.json`, JSON.stringify(E, null, 1), "application/json");
   if (a === "copy") copyTsv();
-  if (a === "pricepatch") { const pe = store.get("sido3_price_edits", {}), items = Object.entries(pe).map(([name, v]) => ({ name, set: +v > 0 ? { fixedPrice: +v, src: "확정" } : { fixedPrice: null } }));
-    download("patch.json", JSON.stringify({ note: "관리자 견적 입력 화면에서 바꾼 기본 단가 " + new Date().toISOString().slice(0, 10), items }, null, 1), "application/json"); toast("patch.json 을 받았습니다. 견적프로그램 폴더의 tools 폴더에 넣고 ‘5_수정사항_반영하기.bat’을 실행하면 실장용에도 반영됩니다. (또는 Claude에게 ‘이 단가로 고정해줘’라고 하세요)") }
+  if (a === "pricepatch") { download("patch.json", JSON.stringify(pePatch(), null, 1), "application/json"); toast("patch.json 을 받았습니다. 견적프로그램 폴더의 tools 폴더에 넣고 ‘5_수정사항_반영하기.bat’을 실행하면 실장용에도 반영됩니다. (또는 Claude에게 ‘이 단가로 고정해줘’라고 하세요)") }
   if (a === "priceapply") { SRV.patchOpen = true; SRV.patchRes = null; SRV.patch = null; SRV.patchErr = ""; show("saved"); setTimeout(() => { const b = $("#patchBox"); if (b) { b.open = true; b.scrollIntoView({ block: "center" }) } }, 500) }   // (v70) ‘저장된 견적’의 ‘수정사항 반영’ 칸으로 간다
 });
 let DL_CAP = null;                                   // 게시 주소에서는 화면이 파일을 직접 내려받지 못한다 → 뷰어의 ‘내려받기’ 기능으로 저장한다 (받는 사람이 확인 창에서 허용)
@@ -6309,14 +6310,21 @@ function goneLoad() { if (SRV.goneBusy) return; SRV.goneBusy = true; SRV.goneErr
 /* (v70) 수정사항 반영 (관리자): 전에는 대표님 컴퓨터에서 ‘5_수정사항_반영하기.bat’을 돌려 비밀번호를 쳐야 했다 — 이제 이 화면에서 관리자 비밀번호를 넣으면 서버가 같은 일을 한다.
    반영할 것 = ① 서버의 tools\patch.json (Claude가 만들어 미리 돌려 본 수정사항) ② 견적 입력 화면에서 바꾼 기본 단가(sido3_price_edits · ‘바꾼 단가 파일 받기’와 같은 내용).
    비밀번호는 보내지 않는다 — 이 화면이 비밀번호로 만든 키(관리자\gate.js 와 같은 방식)를 그때 한 번 보내고, 서버는 그 키로 관리자 자료를 열어 고친 뒤 같은 키로 다시 잠근다(잠금 값이 그대로라 이 화면의 로그인이 끊기지 않는다). */
-function pePatch() { const pe = store.get("sido3_price_edits", {}) || {}; return { note: "관리자 견적 입력 화면에서 바꾼 기본 단가 " + new Date().toISOString().slice(0, 10), items: Object.entries(pe).map(([name, v]) => ({ name, set: +v > 0 ? { fixedPrice: +v, src: "확정" } : { fixedPrice: null } })) } }
+function pePatch() {                                  // (v103) 고친 단가(sido3_price_edits) → 수정사항. 업체가 = cost · 소비자가 = fixedPrice. 업체가만 고친 품목은 지금 소비자가를 고정 판매가로 굳혀 소비자가가 그대로 남게 한다
+  const all = peAll(), B = pfBase(), items = [];
+  for (const [name, e] of Object.entries(all)) { const bi = B[name]; if (!bi) continue; const L = pfLock(bi) || {}, set = {};
+    if (e.c !== undefined && !L.c) { set.cost = e.c; if (e.p === undefined && !bi.fixedPrice) { const p0 = pfBaseP(bi); if (p0 > 0) set.fixedPrice = p0 } }
+    if (e.p !== undefined && !L.p) set.fixedPrice = e.p > 0 ? e.p : null;
+    if (set.cost !== undefined || set.fixedPrice > 0) set.src = "확정";   // 전의 ‘기본 단가 바꾸기’처럼 — 관리자가 고친 값은 ‘추정’이 아니다
+    if (Object.keys(set).length) items.push({ name, set }) }
+  return { note: "관리자 화면에서 고친 단가 (업체가·소비자가) " + new Date().toISOString().slice(0, 10), items } }
 async function admKeyHex(pw, lock) {                  // 관리자 비밀번호 → 관리자 자료의 키(64바이트 · 16진수)
   if (!lock || !lock.salt || !(window.crypto && crypto.subtle)) throw new Error("이 브라우저에서는 키를 만들 수 없습니다. 크롬·엣지 최신 버전으로 열어 주세요.");
   const salt = Uint8Array.from(atob(lock.salt), c => c.charCodeAt(0)), k = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
   return Array.from(new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: +lock.iter }, k, 512))).map(x => x.toString(16).padStart(2, "0")).join("");
 }
 function patchHtml() {
-  const P = SRV.patch, R0 = SRV.patchRes, pe = typeof STAFF_DATA !== "undefined" && STAFF_DATA ? {} : store.get("sido3_price_edits", {}) || {}, pn = Object.keys(pe).length;
+  const P = SRV.patch, R0 = SRV.patchRes, pe = typeof STAFF_DATA !== "undefined" && STAFF_DATA ? {} : peAll(), pn = Object.keys(pe).length;
   const pre = t => t ? `<pre style="white-space:pre-wrap;word-break:break-all;max-height:280px;overflow:auto;font-size:12.5px;line-height:1.5;background:rgba(127,127,127,.12);padding:8px 10px;border-radius:8px;margin:6px 0">${esc(t)}</pre>` : "";
   const form = (mode, label) => `<div class="toolbar" style="margin-top:8px"><input type="password" id="patchPw" placeholder="관리자 비밀번호" autocomplete="off" style="flex:0 1 220px;width:auto" aria-label="관리자 비밀번호 (반영 확인)"><button type="button" class="btn primary sm" id="patchGo" data-mode="${mode}">${label}</button></div><p class="note">원가 자료를 고치는 일이라 비밀번호를 한 번 더 넣습니다. 비밀번호 자체는 보내지 않고, 이 화면에서 만든 키가 그때만 쓰입니다. 5번 틀리면 15분 잠깁니다.</p>`;
   let body, tag = "";
@@ -6328,9 +6336,9 @@ function patchHtml() {
   else if (P.pending) { tag = '<span class="chip warn">기다리는 수정사항 있음</span>';
     body = P.bad ? '<p class="note down">기다리는 수정사항 파일을 읽지 못했습니다. Claude에게 확인을 부탁해 주세요.</p>' : `<p class="note"><b>반영을 기다리는 수정사항</b> ${+P.count || 0}건 <span class="note">(${esc(P.at || "")}에 준비됨)</span>${P.note ? "<br>" + esc(P.note) : ""}</p>
       <p class="note" style="margin-bottom:0"><b>미리 돌려 본 결과</b> — ${P.dry && P.dry.ok ? "통과했습니다. 아래 내용대로 바뀝니다 (여기 보이는 원가는 검사용 값입니다)." : '<span class="down">걸린 것이 있어 반영할 수 없습니다. Claude에게 이 내용을 알려 주세요.</span>'}</p>${pre(P.dry && P.dry.out)}
-      ${P.dry && P.dry.ok ? form("file", "이 수정사항 반영하기") : ""}${pn ? `<p class="note">견적 입력 화면에서 바꾼 기본 단가 ${pn}건은 위 수정사항을 먼저 반영한 뒤에 반영할 수 있습니다.</p>` : ""}` }
+      ${P.dry && P.dry.ok ? form("file", "이 수정사항 반영하기") : ""}${pn ? `<p class="note">고친 단가 ${pn}건은 위 수정사항을 먼저 반영한 뒤에 반영할 수 있습니다.</p>` : ""}` }
   else if (pn) { tag = `<span class="chip warn">바꾼 단가 ${pn}건</span>`;
-    body = `<p class="note"><b>견적 입력 화면에서 바꾼 기본 단가 ${pn}건</b> — 반영하면 실장 화면에도 이 단가가 기본으로 나옵니다.</p><ul class="list">${Object.entries(pe).map(([n, v]) => `<li><b>${esc(n)}</b><span class="note">${+v > 0 ? "고정 판매가 " + won(+v) + "원" : "고정 판매가 없앰 (원가와 마진으로 다시 계산)"}</span></li>`).join("")}</ul>${form("pe", "바꾼 단가 반영하기")}` }
+    body = `<p class="note"><b>고친 단가 ${pn}건</b> (업체가 · 소비자가) — 반영하면 모든 견적과 실장 화면에 이 단가가 기본으로 나옵니다.</p><ul class="list">${Object.entries(pe).map(([n, e]) => `<li><b>${esc(aliasOf(n))}</b><span class="note">${pfDesc(n, e)}</span></li>`).join("")}</ul>${form("pe", "바꾼 단가 반영하기")}` }
   else body = '<p class="note">지금 반영을 기다리는 수정사항이 없습니다. Claude에게 단가·공정 수정을 시키면 여기에 “기다리는 수정사항”으로 나타나고, 견적 입력 화면에서 기본 단가를 바꿔도 여기에 나타납니다.</p>';
   return `<details class="more" id="patchBox"${SRV.patchOpen ? " open" : ""}><summary>수정사항 반영 (단가·공정 자료) ${tag || (SRV.info && SRV.info.patchPending ? '<span class="chip warn">기다리는 수정사항 있음</span>' : pn ? `<span class="chip warn">바꾼 단가 ${pn}건</span>` : "")} <span class="note">대표님 컴퓨터에서 bat을 돌리지 않고, 여기서 관리자 비밀번호를 넣어 반영합니다${P && P.ver ? " · 지금 데이터 " + esc(P.ver) : ""}</span></summary><div class="bd">${body}</div></details>`;
 }
@@ -6358,6 +6366,164 @@ document.addEventListener("click", async ev0 => { const t = ev0.target; if (!SRV
       SRV.patchErr = e.msg || e.message || "반영하지 못했습니다."; SRV.patchOut = b.out || "" }
     SRV.patchRun = false; SRV.patchOpen = true; renderSrv(); return }
 });
+/* (v103) 단가 고치기 (원가 자료를 연 관리자 화면에만) — 사용자(2026-11-28): “자재비 부자재비 인건비를 개별적으로 넣어서 업체가 / 소비자가 정확하게 나와야 담당실장들이 견적을 넣을수가 있어 /
+   세면대나 수전 이런부분들도 금액수정만 할수있게 대신 기존가격을 무시하지말고 / 제대로된 원가를 표기하기 위해 수정하는거야” · “원가는 관리자가 기본 단가표를 고쳐 모든 견적에 반영” → “네, 관리자가”.
+   칸에는 지금 값(데이터 파일의 값)이 들어 있다. 업체가만 고치면 소비자가는 그대로, 소비자가만 고치면 업체가는 그대로 — 마진 %는 두 값으로 계산해 보여 주기만 한다.
+   고친 것은 견적 입력 화면의 ‘기본 단가 바꾸기’와 같은 보관 칸(sido3_price_edits = { 품목 이름: { c 업체가, p 소비자가 } } · 옛 모양 숫자 = 소비자가)에 모였다가
+   ‘수정사항 반영’(pePatch → /api/adm/patch → tools\sido_tool.py patchkey) 또는 patch.json 파일로 한꺼번에 반영된다. 반영 전에는 소비자가만 이 화면의 견적 계산에 들어간다(전과 같음 · 업체가는 반영 뒤). */
+const PE_KEY = "sido3_price_edits";
+function peNorm(v) { if (v === null || v === undefined || v === "") return {}; if (typeof v !== "object") return { p: +v || 0 }; const o = {}; if (v.c !== undefined && v.c !== null) o.c = +v.c; if (v.p !== undefined && v.p !== null) o.p = +v.p; return o }
+function peAll() { const pe = store.get(PE_KEY, {}) || {}, o = {}; for (const [n, v] of Object.entries(pe)) { const e = peNorm(v); if (e.c !== undefined || e.p !== undefined) o[n] = e } return o }
+function peSave(all) { const o = {}; for (const [n, e] of Object.entries(all)) if (e && (e.c !== undefined || e.p !== undefined)) o[n] = e; if (Object.keys(o).length) store.set(PE_KEY, o); else store.del(PE_KEY) }
+let PF_BASE = null, PF_SUB = null, PF_ARM = null, PF_T = 0, PF_QT = 0;
+function pfBase() { if (!PF_BASE) { PF_BASE = {}; for (const i of BASE.catalog || []) PF_BASE[i.name] = i } return PF_BASE }   // 데이터 파일(반영된 값) 그대로 — ‘기존 값’
+const pfM = i => (i.margin !== null && i.margin !== undefined && i.margin !== "") ? +i.margin : (+(BASE.margins || {})[i.proc] || 0);
+function pfLock(i) {                                  // 한 칸으로 고칠 수 없는 품목 (c 업체가 · p 소비자가 잠김)
+  if (i.tier) return { c: 1, p: 1, why: "수량별 단가표가 있는 품목 — ‘단가·원가’ 화면의 단가표 엑셀에서 고칩니다" };
+  if (i.costTable) return { c: 1, p: 1, why: "층수별 운임표로 정하는 품목 — ‘단가·원가’ 화면의 단가표 엑셀에서 고칩니다" };
+  if (i.costVar) return { c: 1, p: 1, why: "실장이 현장에서 받은 업체 견적가로 정하는 품목 — 여기서는 고치지 않습니다" };
+  if (SET_PARTS[i.name]) return { c: 1, p: 0, why: "업체가는 구성품 업체가의 합 — 구성품 줄에서 고칩니다" };
+  return null }
+function pfC(i, e, all) { if (SET_PARTS[i.name]) { const B = pfBase(); return SET_PARTS[i.name].reduce((a, n) => { const x = (all || {})[n] || {}; return a + (x.c !== undefined ? x.c : +(B[n] || {}).cost || 0) }, 0) } return e && e.c !== undefined ? e.c : +i.cost || 0 }
+const pfBaseC = i => pfC(i, null, null);
+function pfBaseP(i) { return i.tier ? +i.tier[i.tier.length - 1][2] : i.costTable || i.costVar ? 0 : i.fixedPrice ? +i.fixedPrice : i.cost ? roundPrice(i.cost / (1 - pfM(i))) : 0 }
+function pfP(i, e, c) { if (e && e.p > 0) return e.p; if (e && e.p === 0) return c ? roundPrice(c / (1 - pfM(i))) : 0; return pfBaseP(i) }
+function pfSubs() { if (PF_SUB) return PF_SUB; const s = new Set([SET_SUB]);   // 견적서가 부자재로 묶는 기준과 같다: 줄의 kind 가 부자재 · 묶음 이름에 ‘부자재’ · 목공 부자재 1식
+  for (const l of Object.values(D.stepLines || {}).flat()) { if (!l) continue; if (l.kind === "부자재") (l.items || []).forEach(n => s.add(n)); const b = l.bom; if (b && String(b.label || "").includes("부자재")) (b.items || []).forEach(x => x && x.name && s.add(x.name)) }
+  return PF_SUB = s }
+const PF_KINDS = ["자재비", "부자재비", "인건비", "그 밖"];
+const pfKind = i => i.kind === "노무" ? "인건비" : i.kind === "경비" ? "그 밖" : pfSubs().has(i.name) ? "부자재비" : !i.kind || i.kind === "자재" ? "자재비" : "그 밖";
+const pfNorm = s => String(s || "").toLowerCase().replace(/\s+/g, "");
+function pfParse(s) {                                 // 숫자 · 쉼표 · 끝의 ‘원’ · 숫자 뒤 ‘만’ 하나만 받는다 (300만 = 3,000,000). 아니면 null
+  let t = String(s).replace(/\s+/g, ""); if (t.endsWith("원")) t = t.slice(0, -1);
+  let k = 1; if (t.endsWith("만")) { k = 10000; t = t.slice(0, -1) }
+  if (k > 1 ? !/^(\d{1,3}(,\d{3})+|\d+)(\.\d{1,4})?$/.test(t) : !/^(\d{1,3}(,\d{3})+|\d+)$/.test(t)) return null;
+  return Math.round(+t.replace(/,/g, "") * k) }
+function pfDesc(n, e) { const i = pfBase()[n]; if (!i) return "데이터에 없는 품목 (반영하지 않습니다)"; const all = peAll(), c = pfC(i, e, all), out = [];
+  if (e.c !== undefined) out.push(`업체가 ${won(pfBaseC(i))} → ${won(c)}원`);
+  if (e.p !== undefined) out.push(e.p > 0 ? `소비자가 ${won(pfBaseP(i))} → ${won(e.p)}원` : "고정 판매가 없앰 (원가와 마진으로 다시 계산)");
+  else if (e.c !== undefined) out.push(pfBaseP(i) > 0 ? `소비자가 ${won(pfBaseP(i))}원 그대로` : `소비자가가 없어 반영하면 약 ${won(roundPrice(c / (1 - pfM(i))))}원으로 계산됩니다`);
+  return out.join(" · ") }
+function pfMem(name) {                                // 소비자가는 반영 전에도 이 화면의 견적 계산에 쓴다(기본 단가 바꾸기와 같다) — 되돌리면 데이터 파일 값으로
+  const it = byName[name], bi = pfBase()[name]; if (!it || !bi) return; const e = peAll()[name] || {};
+  if (e.p > 0) it.fixedPrice = e.p; else if (e.p === 0 || !bi.fixedPrice) delete it.fixedPrice; else it.fixedPrice = bi.fixedPrice;
+  const ov = store.get("sido3_override", null), o = ov && ov.base === BASE.version && ov.data && Array.isArray(ov.data.catalog) ? ov.data.catalog.find(x => x.name === name) : null;
+  if (o && (o.fixedPrice || 0) !== (it.fixedPrice || 0)) { if (it.fixedPrice) o.fixedPrice = it.fixedPrice; else delete o.fixedPrice; store.set("sido3_override", ov) } }
+function pfRecalc() { clearTimeout(PF_T); PF_T = setTimeout(() => { try { refresh() } catch (e) { } }, 400) }
+function pfBoot() {
+  if (!$("#pfixBox")) { const tb = document.querySelector('nav.tabs [data-view="prices"]'), sec = $("#view-prices");   // 전부터 있던 ‘단가·원가’ 탭과 합친다 — 같은 품목 목록이 두 탭에 있지 않게. 그 탭의 품목 정보 표 · 엑셀 · data.js 내보내기는 아래 접힌 칸으로
+    if (tb) tb.textContent = "단가 고치기";
+    if (sec) { const old = document.createElement("details"); old.className = "more"; old.id = "pfOld";
+      old.innerHTML = '<summary>품목 정보 고치기 <span class="note">이름 · 규격 · 단위 · 구분 · 개별 마진 · 품목 추가·삭제 · 단가표 엑셀 · data.js 내보내기 (업체가·소비자가는 위 표에서)</span></summary>';
+      while (sec.firstChild) old.appendChild(sec.firstChild); sec.appendChild(Object.assign(document.createElement("div"), { id: "pfixBox" })); sec.appendChild(old) }
+    document.head.insertAdjacentHTML("beforeend", `<style id="pfCss">
+#pfixBox{font-size:16px;line-height:1.55}#pfixBox .note,#pfixBox .chip,#pfixBox .btn{font-size:15px}#pfixBox .btn.primary{font-size:16px}#pfixBox .card{max-width:100%;overflow:hidden}
+#pfixBox .hd{flex-wrap:wrap;gap:6px 12px}#pfixBox .hd h2{font-size:20px}
+.pfbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 12px;font-size:17px}
+.pffl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:0 0 12px}
+.pffl input[type=search]{flex:1 1 220px;min-width:0;width:auto;font-size:16px;padding:8px 10px}.pffl select{font-size:16px;padding:7px 8px;width:auto;max-width:100%}
+.pffl label{display:inline-flex;gap:6px;align-items:center;font-size:16px;cursor:pointer}.pffl input[type=checkbox]{width:20px;height:20px}
+details.pfg{border:1px solid var(--line);border-radius:10px;margin:8px 0}details.pfg>summary{cursor:pointer;padding:11px 14px;font-size:17px;font-weight:600}
+.pfwrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.pft{width:100%;min-width:800px;border-collapse:collapse;font-size:15px}.pft th{font-size:15px;font-weight:600;text-align:left;padding:7px 8px;white-space:nowrap;color:var(--muted)}
+.pft td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}.pft .num{text-align:right;white-space:nowrap}
+.pfin{width:128px;font-size:16px;text-align:right;padding:6px 8px}.pfin.pfchg{border:2px solid var(--accent);background:var(--accent-soft);font-weight:700}
+tr.pfed>td{background:var(--accent-soft)}tr.pfbad>td.pfmg{color:var(--warn);font-weight:700}
+.pfsm{display:block;font-size:15px;color:var(--muted)}.pfwarn{display:block;font-size:15px;color:var(--warn);font-weight:600}
+.pfno{display:inline-block;font-size:15px;font-weight:700;color:var(--warn);border:1px solid var(--warn);border-radius:6px;padding:0 6px;margin-left:4px}
+.pflk{display:inline-block;padding:6px 8px;color:var(--muted)}.pfold{font-size:15px}.pfold b{color:var(--accent)}
+.pfback{font-size:18px;min-width:44px}#pfConfirm .pft{min-width:640px}
+</style>`) }
+  for (const n of Object.keys(peAll())) pfMem(n) }
+function pfCount() { const all = peAll(); let a = 0, b = 0; for (const e of Object.values(all)) { if (e.c !== undefined) a++; if (e.p !== undefined) b++ } return { n: Object.keys(all).length, a, b } }
+function pfBarHtml() { const k = pfCount();
+  return k.n ? `<b>고친 품목 ${k.n}개</b> <span>(업체가 ${k.a} · 소비자가 ${k.b})</span><button type="button" class="btn primary" id="pfGo">반영하기</button><button type="button" class="btn" id="pfAll">모두 되돌리기</button>`
+    : '<span class="note">고친 품목이 없습니다. 칸을 눌러 금액을 고쳐 적고 Enter 를 누르세요.</span>' }
+function pfSumNote() {                               // 관리자 화면 ‘견적 합계’ 칸에만: 반영하지 않은 소비자가가 이 금액에 들어 있다 (실장 화면 · 견적서 · 인쇄 · 엑셀에는 없다)
+  const all = peAll(), n = Object.values(all).filter(e => e.p !== undefined).length, c = Object.values(all).filter(e => e.c !== undefined && e.p === undefined).length;
+  if (!n && !c) return "";
+  return `<div class="note down pfsum" style="margin-top:8px;font-size:15px">${n ? `반영하지 않은 단가 ${n}개가 이 금액에 들어 있습니다.` : ""}${c ? ` 업체가만 고친 ${c}개는 반영한 뒤에 들어갑니다.` : ""} <button type="button" class="btn sm" data-pfgo>단가 고치기로</button></div>` }
+document.addEventListener("click", ev0 => { const b = ev0.target.closest && ev0.target.closest("[data-pfgo]"); if (!b || !isAdmin || STAFF_DATA) return; show("prices"); setTimeout(() => { const x = $("#pfEd"); if (x) { x.checked = true; pfFilter() } const v = $("#pfixBox"); if (v) v.scrollIntoView({ block: "start" }) }, 0) });
+function pfRowParts(i, all) {
+  const n = i.name, e = all[n] || {}, L = pfLock(i) || {}, it = byName[n] || i, c = pfC(i, e, all), p = pfP(i, e, c), bc = pfBaseC(i), bp = pfBaseP(i), ed = e.c !== undefined || e.p !== undefined;
+  const nmA = aliasOf(n), arm = PF_ARM && PF_ARM.n === n, bad = c > 0 && p > 0 && p < c;
+  const nm = `<b>${esc(nmA)}</b> <span class="note">(${esc(it.unit || "-")})</span>${nmA !== n ? `<span class="pfsm">${esc(n)}</span>` : ""}${!L.c && !(c > 0) ? '<span class="pfno">원가 없음</span>' : ""}${pfUnused(n) ? '<span class="pfsm">공사 줄에 없는 품목 (추가 품목으로는 넣을 수 있음)</span>' : ""}${L.why ? `<span class="pfsm">🔒 ${esc(L.why)}</span>` : ""}${bad ? '<span class="pfwarn">소비자가가 업체가보다 낮습니다</span>' : ""}${arm ? `<span class="pfwarn">기존 값과 차이가 큽니다 — 맞으면 같은 값을 한 번 더 넣으세요</span>` : ""}${e.c !== undefined && e.p === undefined && !(bp > 0) ? `<span class="pfsm">소비자가가 없어 반영하면 약 ${won(roundPrice(c / (1 - pfM(i))))}원으로 계산됩니다</span>` : ""}`;
+  const box = (f, v, chg) => (f === "c" ? L.c : L.p) ? `<span class="pflk">${v > 0 ? won(v) : "-"}</span>` : `<input class="pfin${chg ? " pfchg" : ""}" data-pf="${f}" inputmode="numeric" autocomplete="off" value="${v > 0 ? won(v) : ""}" placeholder="${f === "c" ? "원가 없음" : "없음"}" aria-label="${esc(nmA)} ${f === "c" ? "업체가" : "소비자가"}">`;
+  const mg = c > 0 && p > 0 ? (Math.round((p - c) / p * 1000) / 10).toFixed(1) + "%" : "-";
+  const old = [e.c !== undefined ? `업체가 ${won(bc)} → <b>${won(c)}</b>` : "", e.p !== undefined ? (e.p > 0 ? `소비자가 ${won(bp)} → <b>${won(p)}</b>` : "고정 판매가 없앰") : ""].filter(Boolean).join("<br>") || `<span class="note">업체가 ${bc > 0 ? won(bc) : "-"} · 소비자가 ${bp > 0 ? won(bp) : "-"}</span>`;
+  return { ed, bad, no: !L.c && !(c > 0), nm, c: box("c", c, e.c !== undefined), p: box("p", p, e.p !== undefined), mg, old, back: ed ? `<button type="button" class="btn sm pfback" data-pfback="${esc(n)}" title="이 품목을 기존 값으로 되돌리기" aria-label="${esc(nmA)} 되돌리기">↺</button>` : "" } }
+function pfRowHtml(i, all) { const r = pfRowParts(i, all), k = pfKind(i);
+  return `<tr class="pfr${r.ed ? " pfed" : ""}${r.bad ? " pfbad" : ""}" data-n="${esc(i.name)}" data-k="${k}" data-q="${esc(pfNorm(aliasOf(i.name) + "|" + i.name + "|" + (i.spec || "")))}" data-no="${r.no ? 1 : 0}" data-ed="${r.ed ? 1 : 0}" data-un="${pfUnused(i.name) ? 1 : 0}"><td class="pfnm">${r.nm}</td><td>${k}</td><td class="num pfc">${r.c}</td><td class="num pfp">${r.p}</td><td class="num pfmg">${r.mg}</td><td class="pfold">${r.old}</td><td class="pfbk">${r.back}</td></tr>` }
+let PF_USED = null;
+function pfUnused(n) {                                // 감춘 옛 품목 · 없앤 줄(gone · dead)에만 쓰이는 품목 · 어느 공사 줄과 포함 내역에서도 쓰이지 않는 품목
+  if (!PF_USED) { const s = new Set(), add = n => { if (n && !s.has(n)) { s.add(n); for (const p of SET_PARTS[n] || []) s.add(p) } };
+    for (const l of Object.values(D.stepLines || {}).flat()) { if (!l || l.gone || l.dead) continue; (l.items || []).forEach(add); for (const b of (l.bom || {}).items || []) add(b && b.name) }
+    for (const k of ["floorOpts", "paperOpts"]) ((D.global || {})[k] || []).forEach(add);
+    for (const x of E.extras || []) add(x.item);
+    PF_USED = s }
+  return HIDE_ITEMS.includes(n) || !PF_USED.has(n) }
+function pfGroups() { const g = {}, B = BASE.catalog || [], ord = i => PF_KINDS.indexOf(pfKind(i));
+  for (const i of B) { const p = PROCS.includes(i.proc) ? i.proc : "기타"; (g[p] = g[p] || []).push(i) }
+  for (const p in g) g[p] = g[p].map((i, k) => [i, k]).sort((a, b) => ord(a[0]) - ord(b[0]) || a[1] - b[1]).map(x => x[0]);
+  return g }
+function pfRender() {
+  const V = $("#pfixBox"); if (!V || !isAdmin || STAFF_DATA) return; PF_SUB = null; PF_USED = null;
+  const all = peAll(), G = pfGroups(), keep = { q: ($("#pfQ") || {}).value || "", p: ($("#pfP") || {}).value || "", k: ($("#pfK") || {}).value || "", no: !!($("#pfNo") || {}).checked, ed: !!($("#pfEd") || {}).checked, un: !!($("#pfUn") || {}).checked };
+  const head = '<thead><tr><th>품목 (단위)</th><th>구분</th><th class="num">업체가</th><th class="num">소비자가</th><th class="num">마진</th><th>기존 값</th><th></th></tr></thead>';
+  V.innerHTML = `<div class="card"><div class="hd"><h2>단가 고치기</h2><span class="note">품목마다 업체가(원가)와 소비자가(판매가)를 고칩니다. 한쪽만 고치면 다른 쪽은 그대로입니다. ‘반영하기’를 누르면 기본 단가표에 들어가 모든 견적에 적용됩니다.</span></div><div class="bd">
+    <p class="note pfmem">반영하기 전: 고친 <b>소비자가</b>는 이 관리자 화면의 견적에 바로 들어가고, <b>업체가</b>는 반영한 뒤에 들어갑니다. 실장 화면은 반영하기 전에는 바뀌지 않습니다.</p>
+    <div class="pfbar" id="pfBar">${pfBarHtml()}</div><div id="pfConfirm"></div>
+    <div class="pffl"><input type="search" id="pfQ" placeholder="품목 이름 찾기" aria-label="품목 이름 찾기" value="${esc(keep.q)}">
+      <select id="pfP" aria-label="공정"><option value="">모든 공정</option>${PROCS.filter(p => G[p]).map(p => `<option value="${p}"${keep.p === p ? " selected" : ""}>${PROC_LABEL[p]}</option>`).join("")}</select>
+      <select id="pfK" aria-label="구분"><option value="">모든 구분</option>${PF_KINDS.map(k => `<option${keep.k === k ? " selected" : ""}>${k}</option>`).join("")}</select>
+      <label><input type="checkbox" id="pfNo"${keep.no ? " checked" : ""}> 원가 없는 품목만</label><label><input type="checkbox" id="pfEd"${keep.ed ? " checked" : ""}> 고친 것만</label><label><input type="checkbox" id="pfUn"${keep.un ? " checked" : ""}> 공사 줄에 없는 품목도 보기</label></div>
+    <p class="note">금액은 숫자로 적습니다 (예: 12,000 · 3만 · 300만원). 칸을 비우면 기존 값으로 돌아갑니다. 기존 값의 30% 아래나 3배 위는 같은 값을 한 번 더 넣어야 받습니다.</p>
+    <div id="pfList">${PROCS.filter(p => G[p]).map(p => { const L = G[p], m = L.filter(i => all[i.name]).length;
+      return `<details class="pfg" data-proc="${p}" data-n="${L.length}"><summary>${PROC_LABEL[p]} <span class="note pfcnt">${L.length}개</span> <span class="pfgm">${m ? `<span class="chip warn">고친 것 ${m}</span>` : ""}</span></summary><div class="pfwrap"><table class="pft">${head}<tbody>${L.map(i => pfRowHtml(i, all)).join("")}</tbody></table></div></details>` }).join("")}</div></div></div>`;
+  pfFilter() }
+function pfFilter() { const q = pfNorm(($("#pfQ") || {}).value), p = ($("#pfP") || {}).value || "", k = ($("#pfK") || {}).value || "", no = !!($("#pfNo") || {}).checked, ed = !!($("#pfEd") || {}).checked, un = !!($("#pfUn") || {}).checked, on = !!(q || k || no || ed);
+  document.querySelectorAll("#pfList details.pfg").forEach(g => { if (p && g.dataset.proc !== p) { g.hidden = true; return } let n = 0;
+    for (const tr of g.querySelectorAll("tr.pfr")) { const v = (un || tr.dataset.un !== "1" || tr.dataset.ed === "1") && (!q || tr.dataset.q.includes(q)) && (!k || tr.dataset.k === k) && (!no || tr.dataset.no === "1") && (!ed || tr.dataset.ed === "1"); tr.hidden = !v; if (v) n++ }   // 공사 줄에 없는 품목은 ‘공사 줄에 없는 품목도 보기’를 켜야 보인다 (고친 것은 늘 보인다)
+    g.hidden = !n; if (on && n) g.open = true; else if (p && n) g.open = true; const c = g.querySelector(".pfcnt"); if (c) c.textContent = `${n}개` + (on ? " 보임" : "") }) }
+function pfRowUp(names) {                             // 그 줄만 고쳐 그린다 (입력 칸은 그대로 두고 값만 — 옆 칸으로 옮겨 가던 커서가 끊기지 않게)
+  const all = peAll(), B = pfBase();
+  for (const n of names) { const i = B[n], tr = i && [...document.querySelectorAll("#pfList tr.pfr")].find(x => x.dataset.n === n); if (!tr) continue; const r = pfRowParts(i, all);
+    tr.className = "pfr" + (r.ed ? " pfed" : "") + (r.bad ? " pfbad" : ""); tr.dataset.no = r.no ? 1 : 0; tr.dataset.ed = r.ed ? 1 : 0;
+    tr.querySelector(".pfnm").innerHTML = r.nm; tr.querySelector(".pfmg").textContent = r.mg; tr.querySelector(".pfold").innerHTML = r.old; tr.querySelector(".pfbk").innerHTML = r.back;
+    for (const f of ["c", "p"]) { const inp = tr.querySelector(`input[data-pf="${f}"]`), e = all[n] || {}, v = f === "c" ? pfC(i, e, all) : pfP(i, e, pfC(i, e, all));
+      if (inp) { inp.value = v > 0 ? won(v) : ""; inp.classList.toggle("pfchg", e[f] !== undefined) } else { const s = tr.querySelector(f === "c" ? ".pfc .pflk" : ".pfp .pflk"); if (s) s.textContent = v > 0 ? won(v) : "-" } } }
+  document.querySelectorAll("#pfList details.pfg").forEach(g => { const m = [...g.querySelectorAll("tr.pfr")].filter(tr => all[tr.dataset.n]).length, s = g.querySelector(".pfgm"); if (s) s.innerHTML = m ? `<span class="chip warn">고친 것 ${m}</span>` : "" });
+  const b = $("#pfBar"); if (b) b.innerHTML = pfBarHtml(); const cf = $("#pfConfirm"); if (cf && cf.innerHTML) cf.innerHTML = pfConfirmHtml() }
+function pfTouch(n) { const out = [n]; for (const [s, parts] of Object.entries(SET_PARTS)) if (parts.includes(n)) out.push(s); return out }   // 구성품의 업체가가 바뀌면 그 세트 줄도 다시 그린다
+function pfSet(n, f, raw, inp) {
+  const i = pfBase()[n]; if (!i) return; if ((pfLock(i) || {})[f]) return;
+  const all = peAll(), e = all[n] || {}, base = f === "c" ? pfBaseC(i) : pfBaseP(i), s = String(raw || "").trim(); let v;
+  if (s === "") v = undefined;
+  else { v = pfParse(s); if (v === null) { toast("숫자로 적어 주세요 (예: 12,000 · 3만 · 300만원). 반영하지 않았습니다."); PF_ARM = null; pfRowUp([n]); return }
+    if (!(v > 0)) { toast("0보다 큰 금액을 적어 주세요. 반영하지 않았습니다."); PF_ARM = null; pfRowUp([n]); return } }
+  if (v !== undefined && base > 0 && v !== base && (v < base * 0.3 || v > base * 3)) { const key = n + "|" + f;
+    if (!(PF_ARM && PF_ARM.k === key && PF_ARM.v === v)) { PF_ARM = { k: key, n, v }; toast(`기존 ${won(base)}원의 ${v < base * 0.3 ? "30% 아래" : "3배 위"}입니다. 맞으면 같은 값(${won(v)})을 한 번 더 넣어 주세요.`); pfRowUp([n]); if (inp) inp.select(); return } }
+  PF_ARM = null; if (v === undefined || v === base) delete e[f]; else e[f] = v;
+  all[n] = e; peSave(all); pfMem(n); pfRowUp(pfTouch(n)); pfRecalc() }
+function pfBack(n) { const all = peAll(); delete all[n]; peSave(all); if (PF_ARM && PF_ARM.n === n) PF_ARM = null; pfMem(n); pfRowUp(pfTouch(n)); pfRecalc(); toast(`‘${aliasOf(n)}’을(를) 기존 값으로 되돌렸습니다.`) }
+function pfConfirmHtml() { const all = peAll(), B = pfBase(), L = Object.keys(all); if (!L.length) return "";
+  const admin = (() => { try { return !!(SRV && SRV.me && SRV.me.role === "admin") } catch (e) { return false } })();
+  return `<div class="card" style="margin:0 0 12px;border:2px solid var(--accent)"><div class="hd"><h2>반영할 단가 ${L.length}개</h2></div><div class="bd"><div class="pfwrap"><table class="pft"><thead><tr><th>품목</th><th>바뀌는 것</th><th class="num">마진</th></tr></thead><tbody>${L.map(n => { const i = B[n], e = all[n]; if (!i) return `<tr><td>${esc(n)}</td><td class="pfwarn">데이터에 없는 품목 — 반영하지 않습니다</td><td></td></tr>`; const c = pfC(i, e, all), p = e.p !== undefined ? pfP(i, e, c) : pfBaseP(i);
+      return `<tr><td><b>${esc(aliasOf(n))}</b></td><td>${pfDesc(n, e)}</td><td class="num">${c > 0 && p > 0 ? ((p - c) / p * 100).toFixed(1) + "%" : "-"}</td></tr>` }).join("")}</tbody></table></div>
+    <p class="note">업체가만 고친 품목은 지금 소비자가를 그대로 고정해서 반영합니다 (소비자가가 바뀌지 않습니다).</p>
+    <div class="toolbar">${admin ? '<button type="button" class="btn primary" id="pfApply">반영 화면으로 (관리자 비밀번호)</button>' : ""}<button type="button" class="btn${admin ? "" : " primary"}" id="pfFile">수정사항 파일 받기 (patch.json)</button><button type="button" class="btn" id="pfCancel">닫기</button></div>
+    ${admin ? "" : '<p class="note">회사 서버에 연결된 관리자 화면이면 바로 반영합니다. 여기서는 파일로 받아 tools 폴더에 넣고 ‘5_수정사항_반영하기.bat’을 실행하거나 Claude에게 반영을 부탁하세요.</p>'}</div></div>` }
+document.addEventListener("change", ev0 => { const t = ev0.target; if (!t || !t.closest || !t.closest("#pfixBox")) return;
+  if (t.dataset.pf) { const tr = t.closest("tr.pfr"); if (tr) pfSet(tr.dataset.n, t.dataset.pf, t.value, t); return }
+  if (t.id === "pfP" || t.id === "pfK" || t.id === "pfNo" || t.id === "pfEd" || t.id === "pfUn") pfFilter() });
+document.addEventListener("input", ev0 => { const t = ev0.target; if (t && t.id === "pfQ") { clearTimeout(PF_QT); PF_QT = setTimeout(pfFilter, 120) } });
+document.addEventListener("click", ev0 => { const t = ev0.target; if (!t || !t.closest || !t.closest("#pfixBox")) return;
+  const bk = t.closest("[data-pfback]"); if (bk) { pfBack(bk.dataset.pfback); return }
+  if (t.id === "pfAll") { if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = "한 번 더 누르면 모두 되돌립니다"; return } const ns = Object.keys(peAll()); store.del(PE_KEY); PF_ARM = null; ns.forEach(pfMem); pfRender(); pfRecalc(); toast(`고친 품목 ${ns.length}개를 모두 기존 값으로 되돌렸습니다.`); return }
+  if (t.id === "pfGo") { const cf = $("#pfConfirm"); if (cf) { cf.innerHTML = pfConfirmHtml(); cf.scrollIntoView({ block: "start" }) } return }
+  if (t.id === "pfCancel") { const cf = $("#pfConfirm"); if (cf) cf.innerHTML = ""; return }
+  if (t.id === "pfFile") { const P = pePatch(); if (!P.items.length) { toast("반영할 것이 없습니다."); return } download("patch.json", JSON.stringify(P, null, 1), "application/json"); toast("patch.json 을 받았습니다. 견적프로그램 폴더의 tools 폴더에 넣고 ‘5_수정사항_반영하기.bat’을 실행하면 반영됩니다."); return }
+  if (t.id === "pfApply") { if (!pePatch().items.length) { toast("반영할 것이 없습니다."); return } SRV.patchOpen = true; SRV.patchRes = null; SRV.patch = null; SRV.patchErr = ""; show("saved"); setTimeout(() => { const b = $("#patchBox"); if (b) { b.open = true; b.scrollIntoView({ block: "center" }) } }, 500) } });
 /* 단지 도면 저장소: 주소(단지)·평형이 같으면 누가 올린 도면이든 다시 불러 쓴다 (도면과 방 위치만 저장, 고객 정보 없음) */
 const planUnit = () => { const a = String(E.info.addr2 || ""), d = (a.match(/(\d+)\s*동/) || [])[1], h = (a.match(/(\d+)\s*호/) || [])[1]; return d && h ? { d, ln: h.slice(-2) } : null };   // 같은 동의 같은 호 라인(끝 두 자리)은 구조가 같다
 const planBaseKey = () => { const b = String(E.info.bname || E.info.addr || "").replace(/\s+/g, ""); return b ? b + "|" + (+E.py || 0) + "평" : "" };
@@ -6609,7 +6775,7 @@ function renderPrices() {
     <td><input data-c="name" value="${esc(i.name)}" style="min-width:150px"></td><td><input data-c="spec" value="${esc(i.spec)}" style="min-width:160px"></td>
     <td><input data-c="unit" value="${esc(i.unit)}" style="width:58px"></td>
     <td><select data-c="kind">${["자재", "노무", "경비"].map(k => `<option ${k === i.kind ? "selected" : ""}>${k}</option>`).join("")}</select></td>
-    <td class="num"><input class="p" type="number" step="10" data-c="cost" value="${i.cost}"></td><td><span class="pill ${esc(i.src)}">${esc(i.src)}</span></td>
+    <td class="num" title="업체가는 위 ‘단가 고치기’ 표에서 고칩니다">${won(i.cost)}</td><td><span class="pill ${esc(i.src)}">${esc(i.src)}</span></td>
     <td class="num"><input type="number" step="1" data-c="margin" value="${i.margin == null || i.margin === "" ? "" : Math.round(i.margin * 100)}" placeholder="${Math.round((D.margins[i.proc] || 0) * 100)}" style="width:62px"></td>
     <td class="num"><b data-sp>${won(sp)}</b></td><td class="num">${i.past ? won(i.past) : "-"} ${d != null ? `<span class="${d >= 0 ? "up" : "down"}">${d >= 0 ? "+" : ""}${(d * 100).toFixed(0)}%</span>` : ""}</td>
     <td><button class="btn ghost sm" data-delitem="${i.id}">삭제</button></td></tr>` }).join("") + "</tbody>";
@@ -6822,6 +6988,7 @@ $("#catSearch") && ($("#catSearch").oninput = renderPrices);
 function boot() {
   document.body.classList.toggle("admin-mode", isAdmin);
   document.querySelectorAll(".adm").forEach(x => x.hidden = !isAdmin);
+  if (isAdmin && !STAFF_DATA) pfBoot();               // (v103) ‘단가 고치기’ — 원가 자료를 연 관리자 화면에만
   if (freshStart) { if (D.stepLines) applyPreset2(0); else applyPreset(0) }
   if (D.stepLines) document.querySelector('nav.tabs [data-view="est"]').hidden = true;
   if (isAdmin && !$("#xlExport")) {   // 관리자 로그인 후에만 생기는 버튼
