@@ -1,1 +1,1 @@
-window.SIDO_FRONT={"api": "https://pc.taild01bb0.ts.net", "mir": "https://raw.githubusercontent.com/sidocompany8604/est/data/m/", "kb": "dd015ef1f2", "gate": "https://sido-gate.sidodesign.workers.dev", "box": 1};
+window.SIDO_FRONT={"api": "https://pc.taild01bb0.ts.net", "mir": "https://raw.githubusercontent.com/sidocompany8604/est/data/m/", "kb": "35ef0fb262", "gate": "https://sido-gate.sidodesign.workers.dev", "box": 1};
